@@ -2,8 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../services/location_service.dart';
 
+typedef SaveNodeLocation =
+    Future<void> Function(String name, double latitude, double longitude);
+
+/// Edits a monitoring location. With [onSave] it edits a live node (an
+/// administrator saving to Firestore); without it, the on-device default
+/// location used when a node has no coordinates.
 class LocationSettingsScreen extends StatefulWidget {
-  const LocationSettingsScreen({super.key});
+  const LocationSettingsScreen({
+    super.key,
+    this.initialName,
+    this.initialLatitude,
+    this.initialLongitude,
+    this.onSave,
+  });
+
+  final String? initialName;
+  final double? initialLatitude;
+  final double? initialLongitude;
+  final SaveNodeLocation? onSave;
 
   @override
   State<LocationSettingsScreen> createState() => _LocationSettingsScreenState();
@@ -28,11 +45,13 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
   }
 
   Future<void> _loadLocation() async {
-    final name = await _locationService.getLocationName();
+    final name = widget.initialName ?? await _locationService.getLocationName();
 
-    final latitude = await _locationService.getLatitude();
+    final latitude =
+        widget.initialLatitude ?? await _locationService.getLatitude();
 
-    final longitude = await _locationService.getLongitude();
+    final longitude =
+        widget.initialLongitude ?? await _locationService.getLongitude();
 
     if (!mounted) {
       return;
@@ -72,11 +91,30 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       _saving = true;
     });
 
-    await _locationService.saveLocation(
-      name: name,
-      latitude: latitude,
-      longitude: longitude,
-    );
+    try {
+      final onSave = widget.onSave;
+
+      if (onSave != null) {
+        await onSave(name, latitude, longitude);
+      } else {
+        await _locationService.saveLocation(
+          name: name,
+          latitude: latitude,
+          longitude: longitude,
+        );
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      _showMessage('Could not save location: $error');
+      return;
+    }
 
     if (!mounted) {
       return;
@@ -234,19 +272,21 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
               ),
             ),
 
-            const SizedBox(height: 10),
+            if (widget.onSave == null) ...[
+              const SizedBox(height: 10),
 
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _saving ? null : _resetLocation,
-                icon: const Icon(Icons.restore),
-                label: const Text('RESET TO DEFAULT'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _saving ? null : _resetLocation,
+                  icon: const Icon(Icons.restore),
+                  label: const Text('RESET TO DEFAULT'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
                 ),
               ),
-            ),
+            ],
 
             const SizedBox(height: 20),
 

@@ -1,22 +1,21 @@
-import 'package:flutter/foundation.dart';
-
 import '../models/alert_model.dart';
 import '../models/detection_model.dart';
 import 'alert_storage_service.dart';
-import 'firestore_service.dart';
 import 'notification_service.dart';
 import 'monitoring_data_source.dart';
-import 'node_config.dart';
 
+/// Scripted demo data for training and testing. Everything stays on this
+/// device: simulated readings and alerts are never written to Firestore, so
+/// they can't reach real officers.
 class SimulationService extends MonitoringDataSource {
-  final AlertStorageService _storage = AlertStorageService();
+  static const String nodeId = 'SIM-01';
 
-  final FirestoreService _firestore = FirestoreService();
+  final AlertStorageService _storage = AlertStorageService();
 
   DateTime? _lastUpdated;
 
   DetectionModel _data = DetectionModel(
-    deviceId: NodeConfig.nodeId,
+    deviceId: nodeId,
     temperature: 25.0,
     humidity: 65.0,
     fireProbability: 3.0,
@@ -38,11 +37,7 @@ class SimulationService extends MonitoringDataSource {
 
   @override
   List<AlertModel> get activeAlerts {
-    return _alertHistory
-        .where(
-          (alert) => alert.status == 'ACTIVE' || alert.status == 'ACKNOWLEDGED',
-        )
-        .toList();
+    return _alertHistory.where((alert) => alert.isOpen).toList();
   }
 
   @override
@@ -90,7 +85,6 @@ class SimulationService extends MonitoringDataSource {
 
     notifyListeners();
 
-    await _saveDetectionToFirebase();
     await _storage.saveHistory(_alertHistory);
   }
 
@@ -170,14 +164,6 @@ class SimulationService extends MonitoringDataSource {
 
     notifyListeners();
 
-    await _saveDetectionToFirebase();
-
-    try {
-      await _firestore.saveAlert(alert);
-    } catch (error) {
-      debugPrint('Firestore alert save failed: $error');
-    }
-
     await _storage.saveHistory(_alertHistory);
 
     if (riskLevel == 'HIGH' || riskLevel == 'CRITICAL') {
@@ -193,38 +179,41 @@ class SimulationService extends MonitoringDataSource {
 
   @override
   Future<void> acknowledgeAlert(String alertId) async {
-    final alert = _findAlert(alertId);
+    final index = _indexOfAlert(alertId);
 
-    if (alert == null || alert.status != 'ACTIVE') {
+    if (index == -1 || _alertHistory[index].status != AlertStatus.active) {
       return;
     }
 
     await NotificationService.stopEmergencyAlarm();
 
-    alert.acknowledge();
+    _alertHistory[index] = _alertHistory[index].copyWith(
+      status: AlertStatus.acknowledged,
+      acknowledgedBy: 'Simulation',
+      acknowledgedAt: DateTime.now(),
+    );
 
     _lastUpdated = DateTime.now();
 
     notifyListeners();
 
     await _storage.saveHistory(_alertHistory);
-
-    try {
-      await _firestore.updateAlertStatus(alertId, 'ACKNOWLEDGED');
-    } catch (error) {
-      debugPrint('Firestore acknowledge failed: $error');
-    }
   }
 
   @override
   Future<void> resolveIncident(String alertId) async {
-    final alert = _findAlert(alertId);
+    final index = _indexOfAlert(alertId);
 
-    if (alert == null || alert.status != 'ACKNOWLEDGED') {
+    if (index == -1 ||
+        _alertHistory[index].status != AlertStatus.acknowledged) {
       return;
     }
 
-    alert.resolve();
+    _alertHistory[index] = _alertHistory[index].copyWith(
+      status: AlertStatus.resolved,
+      resolvedBy: 'Simulation',
+      resolvedAt: DateTime.now(),
+    );
 
     final remainingActive = activeAlerts;
 
@@ -239,33 +228,10 @@ class SimulationService extends MonitoringDataSource {
     notifyListeners();
 
     await _storage.saveHistory(_alertHistory);
-
-    try {
-      await _firestore.updateAlertStatus(alertId, 'RESOLVED');
-    } catch (error) {
-      debugPrint('Firestore resolve failed: $error');
-    }
-
-    await _saveDetectionToFirebase();
   }
 
-  Future<void> _saveDetectionToFirebase() async {
-    try {
-      await _firestore.saveDetection(_data);
-      await _firestore.saveDevice(_data);
-    } catch (error) {
-      debugPrint('Firestore detection save failed: $error');
-    }
-  }
-
-  AlertModel? _findAlert(String alertId) {
-    for (final alert in _alertHistory) {
-      if (alert.id == alertId) {
-        return alert;
-      }
-    }
-
-    return null;
+  int _indexOfAlert(String alertId) {
+    return _alertHistory.indexWhere((alert) => alert.id == alertId);
   }
 
   void _restoreDetectionFromAlert(AlertModel alert) {

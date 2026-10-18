@@ -3,10 +3,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../config/app_config.dart';
 import '../models/alert_model.dart';
 import '../models/detection_model.dart';
+import '../models/node_model.dart';
 import '../services/gps_service.dart';
 import '../services/location_service.dart';
+import '../services/node_repository.dart';
 import '../services/routing_service.dart';
 import '../services/monitoring_data_source.dart';
 import 'location_settings_screen.dart';
@@ -14,7 +17,18 @@ import 'location_settings_screen.dart';
 class MapScreen extends StatefulWidget {
   final MonitoringDataSource simulationService;
 
-  const MapScreen({super.key, required this.simulationService});
+  /// Every live node, shown as its own marker. Null in simulation mode.
+  final NodeRepository? repository;
+  final String? selectedNodeId;
+  final ValueChanged<String>? onNodeSelected;
+
+  const MapScreen({
+    super.key,
+    required this.simulationService,
+    this.repository,
+    this.selectedNodeId,
+    this.onNodeSelected,
+  });
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -51,6 +65,56 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _loadLocation();
+  }
+
+  NodeModel? get _selectedNode {
+    final id = widget.selectedNodeId;
+    return id == null ? null : widget.repository?.node(id);
+  }
+
+  /// Where routes go and the map centres: the selected live node, or the
+  /// on-device location in simulation mode.
+  LatLng get _targetLocation {
+    final node = _selectedNode;
+    return node != null
+        ? LatLng(node.latitude, node.longitude)
+        : LatLng(_latitude, _longitude);
+  }
+
+  @override
+  void didUpdateWidget(MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.selectedNodeId != widget.selectedNodeId &&
+        _selectedNode != null) {
+      setState(() {
+        _routePoints = [];
+        _roadDistanceInMeters = null;
+        _routeDurationSeconds = null;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _mapController.move(_targetLocation, 14);
+        }
+      });
+    }
+  }
+
+  AlertModel? _worstOpenAlert(List<AlertModel> alerts) {
+    final open = alerts.where((alert) => alert.isOpen).toList();
+
+    if (open.isEmpty) {
+      return null;
+    }
+
+    open.sort(
+      (a, b) => _severityPriority(
+        b.severity,
+      ).compareTo(_severityPriority(a.severity)),
+    );
+
+    return open.first;
   }
 
   Future<void> _loadLocation() async {
@@ -137,8 +201,8 @@ class _MapScreenState extends State<MapScreen> {
       final result = await _routingService.getRoute(
         startLatitude: _phonePosition!.latitude,
         startLongitude: _phonePosition!.longitude,
-        endLatitude: _latitude,
-        endLongitude: _longitude,
+        endLatitude: _targetLocation.latitude,
+        endLongitude: _targetLocation.longitude,
       );
 
       if (!mounted) {
@@ -284,15 +348,22 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     return AnimatedBuilder(
-      animation: widget.simulationService,
+      animation: Listenable.merge([
+        widget.simulationService,
+        ?widget.repository,
+      ]),
       builder: (context, child) {
         final DetectionModel data = widget.simulationService.data;
 
         final activeAlerts = widget.simulationService.activeAlerts;
 
-        final monitoringLocation = LatLng(_latitude, _longitude);
+        final monitoringLocation = _targetLocation;
 
-        final nodeAlert = _getCurrentNodeAlert(data, activeAlerts);
+        final repository = widget.repository;
+
+        final nodeAlert = repository != null
+            ? _worstOpenAlert(activeAlerts)
+            : _getCurrentNodeAlert(data, activeAlerts);
 
         return Stack(
           children: [
@@ -308,8 +379,12 @@ class _MapScreenState extends State<MapScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.forest_fire_monitor',
+                  urlTemplate: AppConfig.mapTileUrl,
+                  additionalOptions: {
+                    if (AppConfig.mapTileKey.isNotEmpty)
+                      'key': AppConfig.mapTileKey,
+                  },
+                  userAgentPackageName: AppConfig.userAgentPackageName,
                 ),
 
                 // ------------------------------------------
@@ -331,7 +406,29 @@ class _MapScreenState extends State<MapScreen> {
                 // ------------------------------------------
                 MarkerLayer(
                   markers: [
-                    // ONE FIXED MONITORING NODE
+                    // OTHER LIVE NODES
+                    if (repository != null)
+                      for (final node in repository.nodes)
+                        if (node.id != widget.selectedNodeId)
+                          Marker(
+                            point: LatLng(node.latitude, node.longitude),
+                            width: 58,
+                            height: 58,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => widget.onNodeSelected?.call(node.id),
+                              child: Opacity(
+                                opacity: 0.85,
+                                child: _monitoringMarker(
+                                  _worstOpenAlert(
+                                    repository.alertsForNode(node.id),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                    // SELECTED MONITORING NODE
                     Marker(
                       point: monitoringLocation,
                       width: 78,
@@ -437,13 +534,25 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
 
+            // Live node locations are edited by administrators from the
+            // dashboard; this edits the simulation's on-device location.
+            if (repository == null)
+              Positioned(
+                right: 16,
+                bottom: 120,
+                child: FloatingActionButton.small(
+                  heroTag: 'edit_monitoring_location',
+                  onPressed: _openLocationSettings,
+                  child: const Icon(Icons.edit_location_alt),
+                ),
+              ),
+
             Positioned(
-              right: 16,
-              bottom: 120,
-              child: FloatingActionButton.small(
-                heroTag: 'edit_monitoring_location',
-                onPressed: _openLocationSettings,
-                child: const Icon(Icons.edit_location_alt),
+              left: 4,
+              bottom: 2,
+              child: Text(
+                AppConfig.mapAttribution,
+                style: TextStyle(fontSize: 9, color: Colors.grey.shade700),
               ),
             ),
           ],
@@ -605,7 +714,7 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ),
                       Text(
-                        _locationName,
+                        _selectedNode?.name ?? _locationName,
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -622,8 +731,8 @@ class _MapScreenState extends State<MapScreen> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '${_latitude.toStringAsFixed(6)}, '
-                    '${_longitude.toStringAsFixed(6)}',
+                    '${_targetLocation.latitude.toStringAsFixed(6)}, '
+                    '${_targetLocation.longitude.toStringAsFixed(6)}',
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
@@ -800,7 +909,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    _locationName,
+                    _selectedNode?.name ?? _locationName,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -808,8 +917,8 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${_latitude.toStringAsFixed(5)}, '
-                    '${_longitude.toStringAsFixed(5)}',
+                    '${_targetLocation.latitude.toStringAsFixed(5)}, '
+                    '${_targetLocation.longitude.toStringAsFixed(5)}',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ],

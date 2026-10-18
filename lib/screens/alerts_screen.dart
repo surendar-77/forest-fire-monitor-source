@@ -1,29 +1,156 @@
 import 'package:flutter/material.dart';
 
 import '../models/alert_model.dart';
+import '../services/auth_service.dart';
 import '../services/monitoring_data_source.dart';
+import '../services/node_repository.dart';
 import '../services/notification_service.dart';
+import '../services/report_export_service.dart';
 
-class AlertsScreen extends StatelessWidget {
+const List<String> _severities = ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
+
+class AlertsScreen extends StatefulWidget {
   final MonitoringDataSource simulationService;
+  final AuthService auth;
 
-  const AlertsScreen({super.key, required this.simulationService});
+  /// Live alerts for every node. Null in simulation mode, where alerts come
+  /// from [simulationService].
+  final NodeRepository? repository;
+
+  const AlertsScreen({
+    super.key,
+    required this.simulationService,
+    required this.auth,
+    this.repository,
+  });
+
+  @override
+  State<AlertsScreen> createState() => _AlertsScreenState();
+}
+
+class _AlertsScreenState extends State<AlertsScreen> {
+  String? _nodeFilter;
+  String? _severityFilter;
+
+  MonitoringDataSource get simulationService => widget.simulationService;
+
+  bool get _canRespond => widget.auth.canRespondToAlerts;
+
+  List<AlertModel> get _allAlerts {
+    final repository = widget.repository;
+    return repository != null
+        ? repository.alerts
+        : simulationService.alertHistory;
+  }
+
+  bool _matchesFilters(AlertModel alert) {
+    return (_nodeFilter == null || alert.deviceId == _nodeFilter) &&
+        (_severityFilter == null || alert.severity == _severityFilter);
+  }
+
+  Future<void> _acknowledge(AlertModel alert) async {
+    await _runAction(() async {
+      await NotificationService.stopEmergencyAlarm();
+
+      final repository = widget.repository;
+
+      if (repository != null) {
+        await repository.acknowledgeAlert(alert.id);
+      } else {
+        await simulationService.acknowledgeAlert(alert.id);
+      }
+    }, 'Alert acknowledged.');
+  }
+
+  Future<void> _resolve(AlertModel alert) async {
+    final notes = await showDialog<String>(
+      context: context,
+      builder: (context) => const _ResolveDialog(),
+    );
+
+    if (notes == null) {
+      return;
+    }
+
+    await _runAction(() async {
+      final repository = widget.repository;
+
+      if (repository != null) {
+        await repository.resolveIncident(alert.id, notes: notes);
+      } else {
+        await simulationService.resolveIncident(alert.id);
+      }
+    }, 'Incident resolved.');
+  }
+
+  Future<void> _runAction(Future<void> Function() action, String done) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await action();
+      messenger.showSnackBar(SnackBar(content: Text(done)));
+    } catch (error) {
+      final denied = error.toString().contains('permission-denied');
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            denied
+                ? 'You don\'t have permission to do that.'
+                : 'Action failed: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _export(bool pdf, List<AlertModel> alerts) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (alerts.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('No alerts match the current filters.')),
+      );
+      return;
+    }
+
+    final scope = _nodeFilter ?? 'all';
+
+    try {
+      if (pdf) {
+        await ReportExportService.sharePdf(alerts, scope: scope);
+      } else {
+        await ReportExportService.shareCsv(alerts, scope: scope);
+      }
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $error')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: simulationService,
+      animation: Listenable.merge([
+        simulationService,
+        ?widget.repository,
+        widget.auth,
+      ]),
       builder: (context, child) {
-        final activeAlerts = simulationService.activeAlerts;
+        final all = _allAlerts;
+        final filtered = all.where(_matchesFilters).toList();
 
-        final history = simulationService.alertHistory
-            .where((alert) => alert.status == 'RESOLVED')
+        final activeAlerts = filtered.where((alert) => alert.isOpen).toList();
+
+        final history = filtered
+            .where((alert) => alert.status == AlertStatus.resolved)
             .toList();
+
+        final nodeIds = {for (final alert in all) alert.deviceId}.toList()
+          ..sort();
 
         return RefreshIndicator(
           onRefresh: () async {
-            // The real-time Firebase implementation
-            // will later replace this simulation refresh.
+            // Alerts stream in real time; this just gives pull-to-refresh
+            // the expected feel.
             await Future<void>.delayed(const Duration(milliseconds: 300));
           },
           child: ListView(
@@ -31,7 +158,32 @@ class AlertsScreen extends StatelessWidget {
             children: [
               _summaryCard(activeCount: activeAlerts.length),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
+
+              _filterBar(nodeIds, filtered),
+
+              if (!_canRespond) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(Icons.visibility_outlined,
+                        size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'View-only access. Officers acknowledge and resolve '
+                        'alerts.',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              const SizedBox(height: 20),
 
               // ==========================================
               // ACTIVE ALERTS
@@ -91,6 +243,64 @@ class AlertsScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  // ==================================================
+  // FILTERS
+  // ==================================================
+
+  Widget _filterBar(List<String> nodeIds, List<AlertModel> filtered) {
+    return Row(
+      children: [
+        if (widget.repository != null) ...[
+          Expanded(
+            child: DropdownButtonFormField<String?>(
+              initialValue: _nodeFilter,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Node',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('All nodes')),
+                for (final id in nodeIds)
+                  DropdownMenuItem(value: id, child: Text(id)),
+              ],
+              onChanged: (value) => setState(() => _nodeFilter = value),
+            ),
+          ),
+          const SizedBox(width: 10),
+        ],
+        Expanded(
+          child: DropdownButtonFormField<String?>(
+            initialValue: _severityFilter,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Severity',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('All')),
+              for (final severity in _severities)
+                DropdownMenuItem(value: severity, child: Text(severity)),
+            ],
+            onChanged: (value) => setState(() => _severityFilter = value),
+          ),
+        ),
+        if (_canRespond)
+          PopupMenuButton<bool>(
+            tooltip: 'Export report',
+            icon: const Icon(Icons.download),
+            onSelected: (pdf) => _export(pdf, filtered),
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: false, child: Text('Export CSV')),
+              PopupMenuItem(value: true, child: Text('Export PDF')),
+            ],
+          ),
+      ],
     );
   }
 
@@ -274,19 +484,26 @@ class AlertsScreen extends StatelessWidget {
 
             _detailRow('Detected', _formatTime(alert.detectedAt)),
 
+            if (alert.acknowledgedBy != null || alert.acknowledgedAt != null)
+              _detailRow(
+                'Acknowledged',
+                [
+                  alert.acknowledgedBy,
+                  if (alert.acknowledgedAt != null)
+                    _formatTime(alert.acknowledgedAt!),
+                ].whereType<String>().join(' · '),
+              ),
+
             const SizedBox(height: 12),
 
             // ------------------------------------------
             // ACTION
             // ------------------------------------------
-            if (alert.status == 'ACTIVE')
+            if (_canRespond && alert.status == AlertStatus.active)
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await NotificationService.stopEmergencyAlarm();
-                    await simulationService.acknowledgeAlert(alert.id);
-                  },
+                  onPressed: () => _acknowledge(alert),
                   icon: const Icon(Icons.check),
                   label: const Text('ACKNOWLEDGE ALERT'),
                   style: OutlinedButton.styleFrom(
@@ -295,13 +512,11 @@ class AlertsScreen extends StatelessWidget {
                 ),
               ),
 
-            if (alert.status == 'ACKNOWLEDGED')
+            if (_canRespond && alert.status == AlertStatus.acknowledged)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    simulationService.resolveIncident(alert.id);
-                  },
+                  onPressed: () => _resolve(alert),
                   icon: const Icon(Icons.done_all),
                   label: const Text('RESOLVE INCIDENT'),
                   style: ElevatedButton.styleFrom(
@@ -418,6 +633,19 @@ class AlertsScreen extends StatelessWidget {
                 _dialogRow('Latitude', alert.latitude.toStringAsFixed(6)),
                 _dialogRow('Longitude', alert.longitude.toStringAsFixed(6)),
                 _dialogRow('Detected', _formatDateTime(alert.detectedAt)),
+                if (alert.acknowledgedAt != null)
+                  _dialogRow(
+                    'Acknowledged',
+                    '${_formatDateTime(alert.acknowledgedAt!)}'
+                        '${alert.acknowledgedBy == null ? '' : '\nby ${alert.acknowledgedBy}'}',
+                  ),
+                if (alert.resolvedAt != null)
+                  _dialogRow(
+                    'Resolved',
+                    '${_formatDateTime(alert.resolvedAt!)}'
+                        '${alert.resolvedBy == null ? '' : '\nby ${alert.resolvedBy}'}',
+                  ),
+                if (alert.notes != null) _dialogRow('Notes', alert.notes!),
                 _dialogRow('Status', alert.status),
               ],
             ),
@@ -586,5 +814,48 @@ class AlertsScreen extends StatelessWidget {
 
     return '$day/$month/$year • '
         '${_formatTime(dateTime)}';
+  }
+}
+
+class _ResolveDialog extends StatefulWidget {
+  const _ResolveDialog();
+
+  @override
+  State<_ResolveDialog> createState() => _ResolveDialogState();
+}
+
+class _ResolveDialogState extends State<_ResolveDialog> {
+  final _notesController = TextEditingController();
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Resolve incident'),
+      content: TextField(
+        controller: _notesController,
+        maxLines: 4,
+        decoration: const InputDecoration(
+          labelText: 'Field notes (optional)',
+          hintText: 'What was found, action taken, area affected...',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('CANCEL'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _notesController.text),
+          child: const Text('RESOLVE'),
+        ),
+      ],
+    );
   }
 }

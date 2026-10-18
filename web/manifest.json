@@ -1,11 +1,11 @@
 {
-    "name": "forest_fire_monitor",
-    "short_name": "forest_fire_monitor",
+    "name": "Forest Fire Monitor",
+    "short_name": "Fire Monitor",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Real-time forest fire detection and early warning for field officers.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

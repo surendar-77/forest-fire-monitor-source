@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
-import 'node_config.dart';
-
+import '../config/app_config.dart';
+import '../firebase_options.dart';
 import 'notification_service.dart';
 
 class FcmService {
@@ -16,49 +18,19 @@ class FcmService {
     false,
   );
 
+  static String? _uid;
+  static String? _token;
+  static StreamSubscription<String>? _tokenRefreshSubscription;
+
   static Future<void> initialize() async {
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    final settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    debugPrint('FCM permission: ${settings.authorizationStatus}');
-
-    final token = await _messaging.getToken();
-
-    debugPrint('================================');
-    debugPrint('FCM REGISTRATION TOKEN');
-    debugPrint(token ?? 'Token unavailable');
-    debugPrint('================================');
-
-    if (token != null) {
-      await _saveToken(token);
+    if (!kIsWeb) {
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
     }
-
-    _messaging.onTokenRefresh.listen(
-      (newToken) async {
-        debugPrint('FCM TOKEN REFRESHED: $newToken');
-
-        await _saveToken(newToken);
-      },
-      onError: (error) {
-        debugPrint('FCM token refresh error: $error');
-      },
-    );
 
     // FOREGROUND MESSAGE
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      debugPrint('FCM FOREGROUND MESSAGE');
-
-      debugPrint('Title: ${message.notification?.title}');
-
-      debugPrint('Body: ${message.notification?.body}');
-
-      debugPrint('Data: ${message.data}');
-
       final notification = message.notification;
 
       if (notification != null) {
@@ -86,6 +58,80 @@ class FcmService {
       debugPrint('FCM app launch caused by notification.');
 
       _requestAlertsScreen();
+    }
+  }
+
+  /// Registers this device's push token under the signed-in user
+  /// (`users/{uid}/tokens/{token}`) so the backend can reach every phone the
+  /// user is signed in on. Safe to call repeatedly.
+  static Future<void> registerForUser(String uid) async {
+    if (_uid == uid && _token != null) {
+      return;
+    }
+
+    _uid = uid;
+
+    try {
+      final settings = await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        debugPrint('Push notifications denied by the user.');
+        return;
+      }
+
+      final token = await _messaging.getToken(
+        vapidKey: kIsWeb && AppConfig.webPushVapidKey.isNotEmpty
+            ? AppConfig.webPushVapidKey
+            : null,
+      );
+
+      if (token != null) {
+        await _saveToken(uid, token);
+      }
+
+      _tokenRefreshSubscription ??= _messaging.onTokenRefresh.listen(
+        (newToken) async {
+          final currentUid = _uid;
+
+          if (currentUid != null) {
+            await _saveToken(currentUid, newToken);
+          }
+        },
+        onError: (error) {
+          debugPrint('FCM token refresh error: $error');
+        },
+      );
+    } catch (error) {
+      debugPrint('FCM registration failed: $error');
+    }
+  }
+
+  /// Removes this device's token so a signed-out phone stops getting alerts.
+  static Future<void> unregister() async {
+    final uid = _uid;
+    final token = _token;
+
+    _uid = null;
+    _token = null;
+
+    if (uid == null || token == null) {
+      return;
+    }
+
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('tokens')
+          .doc(token)
+          .delete();
+      await _messaging.deleteToken();
+    } catch (error) {
+      debugPrint('FCM unregister failed: $error');
     }
   }
 
@@ -137,15 +183,19 @@ class FcmService {
     return double.tryParse(value.toString()) ?? fallback;
   }
 
-  static Future<void> _saveToken(String token) async {
-    try {
-      await _firestore.collection('devices').doc(NodeConfig.nodeId).set({
-        'fcmToken': token,
-        'notificationEnabled': true,
-        'tokenUpdatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+  static Future<void> _saveToken(String uid, String token) async {
+    _token = token;
 
-      debugPrint('FCM token saved to Firestore.');
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('tokens')
+          .doc(token)
+          .set({
+            'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
     } catch (error) {
       debugPrint('Failed to save FCM token: $error');
     }
@@ -154,9 +204,7 @@ class FcmService {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-
-  debugPrint('FCM BACKGROUND MESSAGE: ${message.messageId}');
-
-  debugPrint('Background data: ${message.data}');
+  // The system tray shows the notification itself; this only needs Firebase
+  // ready in the background isolate.
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }

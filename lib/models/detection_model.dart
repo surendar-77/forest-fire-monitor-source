@@ -1,3 +1,5 @@
+import '../utils/firestore_parse.dart';
+
 class DetectionModel {
   final String deviceId;
 
@@ -27,6 +29,27 @@ class DetectionModel {
     required this.riskLevel,
     required this.alertActive,
   });
+
+  /// Reads the latest readings from a `devices/{nodeId}` document.
+  factory DetectionModel.fromFirestore(
+    String documentId,
+    Map<String, dynamic> data, {
+    double fallbackLatitude = 0,
+    double fallbackLongitude = 0,
+  }) {
+    return DetectionModel(
+      deviceId: parseString(data['deviceId'], documentId),
+      temperature: parseDouble(data['temperature'], 0),
+      humidity: parseDouble(data['humidity'], 0),
+      fireProbability: parseDouble(data['fireProbability'], 0),
+      smokeProbability: parseDouble(data['smokeProbability'], 0),
+      latitude: parseDouble(data['latitude'], fallbackLatitude),
+      longitude: parseDouble(data['longitude'], fallbackLongitude),
+      riskScore: parseInt(data['riskScore'], 0),
+      riskLevel: parseString(data['riskLevel'], 'LOW'),
+      alertActive: parseBool(data['alertActive'], false),
+    );
+  }
 
   DetectionModel copyWith({
     String? deviceId,

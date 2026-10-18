@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../services/node_config.dart';
+import '../models/node_model.dart';
+import 'node_status_chip.dart';
 
 class MonitoringNodeCard extends StatelessWidget {
-  const MonitoringNodeCard({super.key});
+  const MonitoringNodeCard({
+    super.key,
+    required this.nodeId,
+    required this.subtitle,
+    required this.status,
+  });
+
+  final String nodeId;
+  final String subtitle;
+  final NodeStatus status;
 
   @override
   Widget build(BuildContext context) {
@@ -18,43 +28,29 @@ class MonitoringNodeCard extends StatelessWidget {
                 color: Colors.red.shade50,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.flight, color: Colors.red),
+              child: const Icon(Icons.sensors, color: Colors.red),
             ),
 
             const SizedBox(width: 14),
 
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    NodeConfig.nodeId,
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                    nodeId,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Monitoring Area • Online',
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(color: Colors.grey)),
                 ],
               ),
             ),
 
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: Colors.green.shade100,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'ONLINE',
-                style: TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
+            NodeStatusChip(status: status),
           ],
         ),
       ),

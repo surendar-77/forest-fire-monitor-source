@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
 import '../services/data_source_controller.dart';
 import '../services/fcm_service.dart';
+import '../services/node_repository.dart';
+import '../widgets/connection_banner.dart';
 
 import 'alerts_screen.dart';
 import 'dashboard_screen.dart';
 import 'map_screen.dart';
 import 'monitoring_screen.dart';
+import 'settings_screen.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, required this.auth, required this.repository});
+
+  final AuthService auth;
+  final NodeRepository repository;
 
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<AppShell> {
-  final DataSourceController _dataSourceController = DataSourceController();
+  late final DataSourceController _dataSourceController = DataSourceController(
+    repository: widget.repository,
+  );
 
   int _selectedIndex = 0;
 
@@ -24,7 +33,13 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
 
-    _initializeDataSource();
+    _dataSourceController.initialize();
+
+    final uid = widget.auth.user?.uid;
+
+    if (uid != null) {
+      FcmService.registerForUser(uid);
+    }
 
     FcmService.openAlertsRequested.addListener(_handleAlertNavigation);
 
@@ -32,14 +47,6 @@ class _AppShellState extends State<AppShell> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _handleAlertNavigation();
       });
-    }
-  }
-
-  Future<void> _initializeDataSource() async {
-    await _dataSourceController.initialize();
-
-    if (mounted) {
-      setState(() {});
     }
   }
 
@@ -59,20 +66,36 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  List<Widget> get _screens {
+  Widget _screenFor(int index) {
     final source = _dataSourceController.source;
 
-    return [
-      DashboardScreen(simulationService: source),
-      MapScreen(simulationService: source),
-      MonitoringScreen(
-        simulationService: source,
-        simulationController: _dataSourceController.isSimulation
-            ? _dataSourceController.simulationService
-            : null,
-      ),
-      AlertsScreen(simulationService: source),
-    ];
+    switch (index) {
+      case 0:
+        return DashboardScreen(
+          controller: _dataSourceController,
+          auth: widget.auth,
+        );
+      case 1:
+        return MapScreen(
+          simulationService: source,
+          repository: _dataSourceController.isLive ? widget.repository : null,
+          selectedNodeId: _dataSourceController.selectedNodeId,
+          onNodeSelected: _dataSourceController.selectNode,
+        );
+      case 2:
+        return MonitoringScreen(
+          simulationService: source,
+          simulationController: _dataSourceController.isSimulation
+              ? _dataSourceController.simulationService
+              : null,
+        );
+      default:
+        return AlertsScreen(
+          simulationService: source,
+          auth: widget.auth,
+          repository: _dataSourceController.isLive ? widget.repository : null,
+        );
+    }
   }
 
   final List<String> _titles = const [
@@ -94,8 +117,16 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _dataSourceController,
+      animation: Listenable.merge([
+        _dataSourceController,
+        widget.repository,
+        widget.auth,
+      ]),
       builder: (context, _) {
+        final openAlerts = _dataSourceController.isLive
+            ? widget.repository.openAlerts.length
+            : _dataSourceController.simulationService.activeAlerts.length;
+
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -104,74 +135,30 @@ class _AppShellState extends State<AppShell> {
             ),
             centerTitle: true,
             actions: [
-              PopupMenuButton<DataSourceMode>(
-                tooltip: 'Data Source',
-                icon: Icon(
-                  _dataSourceController.isSimulation
-                      ? Icons.science_outlined
-                      : Icons.cloud_done_outlined,
+              if (widget.auth.isAdmin) _dataSourceMenu(context),
+              IconButton(
+                tooltip: 'Settings',
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(
+                      auth: widget.auth,
+                      repository: widget.repository,
+                    ),
+                  ),
                 ),
-                onSelected: (mode) async {
-                  if (mode == DataSourceMode.live) {
-                    await _dataSourceController.switchToLive();
-                  } else {
-                    _dataSourceController.switchToSimulation();
-                  }
-
-                  if (mounted) {
-                    setState(() {});
-                  }
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem<DataSourceMode>(
-                    value: DataSourceMode.simulation,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.science_outlined,
-                          color: _dataSourceController.isSimulation
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('Simulation'),
-                        if (_dataSourceController.isSimulation) ...[
-                          const Spacer(),
-                          const Icon(Icons.check),
-                        ],
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem<DataSourceMode>(
-                    value: DataSourceMode.live,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.cloud_done_outlined,
-                          color: _dataSourceController.isLive
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('Live Data'),
-                        if (_dataSourceController.isLive) ...[
-                          const Spacer(),
-                          const Icon(Icons.check),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
               ),
-
-              if (_selectedIndex == 0 || _selectedIndex == 3)
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.notifications_none),
-                ),
             ],
           ),
-          body: _screens[_selectedIndex],
+          body: Column(
+            children: [
+              if (_dataSourceController.isLive)
+                ConnectionBanner(repository: widget.repository),
+              if (_dataSourceController.isSimulation) _simulationBanner(),
+              Expanded(child: _screenFor(_selectedIndex)),
+            ],
+          ),
           bottomNavigationBar: NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) {
@@ -179,31 +166,119 @@ class _AppShellState extends State<AppShell> {
                 _selectedIndex = index;
               });
             },
-            destinations: const [
-              NavigationDestination(
+            destinations: [
+              const NavigationDestination(
                 icon: Icon(Icons.dashboard_outlined),
                 selectedIcon: Icon(Icons.dashboard),
                 label: 'Dashboard',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.map_outlined),
                 selectedIcon: Icon(Icons.map),
                 label: 'Map',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.monitor_heart_outlined),
                 selectedIcon: Icon(Icons.monitor_heart),
                 label: 'Monitor',
               ),
               NavigationDestination(
-                icon: Icon(Icons.notifications_none),
-                selectedIcon: Icon(Icons.notifications),
+                icon: Badge(
+                  isLabelVisible: openAlerts > 0,
+                  label: Text('$openAlerts'),
+                  child: const Icon(Icons.notifications_none),
+                ),
+                selectedIcon: Badge(
+                  isLabelVisible: openAlerts > 0,
+                  label: Text('$openAlerts'),
+                  child: const Icon(Icons.notifications),
+                ),
                 label: 'Alerts',
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _simulationBanner() {
+    return Material(
+      color: Colors.orange.shade700,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            Icon(Icons.science_outlined, size: 16, color: Colors.white),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Simulation: demo data on this device only. '
+                'No real alerts are sent.',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dataSourceMenu(BuildContext context) {
+    return PopupMenuButton<DataSourceMode>(
+      tooltip: 'Data Source',
+      icon: Icon(
+        _dataSourceController.isSimulation
+            ? Icons.science_outlined
+            : Icons.cloud_done_outlined,
+      ),
+      onSelected: (mode) async {
+        if (mode == DataSourceMode.live) {
+          await _dataSourceController.switchToLive();
+        } else {
+          await _dataSourceController.switchToSimulation();
+        }
+      },
+      itemBuilder: (context) => [
+        _modeItem(
+          context,
+          DataSourceMode.live,
+          Icons.cloud_done_outlined,
+          'Live Data',
+          _dataSourceController.isLive,
+        ),
+        _modeItem(
+          context,
+          DataSourceMode.simulation,
+          Icons.science_outlined,
+          'Simulation',
+          _dataSourceController.isSimulation,
+        ),
+      ],
+    );
+  }
+
+  PopupMenuItem<DataSourceMode> _modeItem(
+    BuildContext context,
+    DataSourceMode mode,
+    IconData icon,
+    String label,
+    bool selected,
+  ) {
+    return PopupMenuItem<DataSourceMode>(
+      value: mode,
+      child: Row(
+        children: [
+          Icon(icon, color: selected ? Theme.of(context).colorScheme.primary : null),
+          const SizedBox(width: 12),
+          Text(label),
+          if (selected) ...[const Spacer(), const Icon(Icons.check)],
+        ],
+      ),
     );
   }
 }
