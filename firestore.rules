@@ -1,0 +1,117 @@
+rules_version = '2';
+
+// Roles come from Firebase Auth custom claims set by the setUserRole Cloud
+// Function: viewer (default), officer, admin. Sensor data is written only by
+// the backend (Admin SDK bypasses these rules), never by the app.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() && request.auth.token.role is string
+        ? request.auth.token.role
+        : 'viewer';
+    }
+
+    function isAdmin() {
+      return role() == 'admin';
+    }
+
+    function isResponder() {
+      return role() in ['officer', 'admin'];
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function validCoordinates(data) {
+      return data.latitude is number && data.longitude is number
+        && data.latitude >= -90 && data.latitude <= 90
+        && data.longitude >= -180 && data.longitude <= 180;
+    }
+
+    // ------------------------------------------------------------------
+    // Monitoring nodes. Admins may set a node's name, zone and location.
+    // ------------------------------------------------------------------
+    match /devices/{nodeId} {
+      allow read: if signedIn();
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['name', 'zone', 'latitude', 'longitude'])
+        && validCoordinates(request.resource.data);
+
+      allow update: if isAdmin()
+        && changedKeys().hasOnly(['name', 'zone', 'latitude', 'longitude'])
+        && validCoordinates(request.resource.data);
+
+      match /readings/{readingId} {
+        allow read: if signedIn();
+      }
+
+      match /hourly/{hourId} {
+        allow read: if signedIn();
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Alerts. Officers and admins move them ACTIVE -> ACKNOWLEDGED ->
+    // RESOLVED, stamped with their own uid and the server time.
+    // ------------------------------------------------------------------
+    match /alerts/{alertId} {
+      allow read: if signedIn();
+
+      allow update: if isResponder() && (acknowledging() || resolving());
+
+      function acknowledging() {
+        return resource.data.status == 'ACTIVE'
+          && request.resource.data.status == 'ACKNOWLEDGED'
+          && changedKeys().hasOnly(['status', 'ackBy', 'ackByName', 'ackAt'])
+          && request.resource.data.ackBy == request.auth.uid
+          && request.resource.data.ackAt == request.time;
+      }
+
+      function resolving() {
+        return resource.data.status == 'ACKNOWLEDGED'
+          && request.resource.data.status == 'RESOLVED'
+          && changedKeys().hasOnly(['status', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'notes'])
+          && request.resource.data.resolvedBy == request.auth.uid
+          && request.resource.data.resolvedAt == request.time
+          && (!('notes' in request.resource.data)
+              || (request.resource.data.notes is string
+                  && request.resource.data.notes.size() <= 2000));
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // User profiles and push tokens. The `role` field is a mirror written
+    // by the backend; users can't set it.
+    // ------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(
+          ['subscribedNodes', 'displayName', 'email', 'updatedAt', 'notificationPrefs']);
+
+      allow update: if signedIn() && request.auth.uid == uid
+        && changedKeys().hasOnly(
+          ['subscribedNodes', 'displayName', 'email', 'updatedAt', 'notificationPrefs']);
+
+      match /tokens/{token} {
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['platform', 'updatedAt']);
+      }
+    }
+
+    // Backend-only configuration (ThingSpeak channels and read keys).
+    match /config/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
