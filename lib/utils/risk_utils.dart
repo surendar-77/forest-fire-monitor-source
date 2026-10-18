@@ -17,6 +17,7 @@ Color riskColor(String riskLevel) {
     case 'LOW':
       return Colors.green;
     case 'MODERATE':
+    case 'MEDIUM':
       return Colors.orange;
     case 'HIGH':
       return Colors.deepOrange;

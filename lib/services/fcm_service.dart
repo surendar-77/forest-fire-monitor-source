@@ -5,8 +5,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/app_config.dart';
 import '../firebase_options.dart';
+import 'gps_service.dart';
 import 'notification_service.dart';
 
 class FcmService {
@@ -91,6 +94,10 @@ class FcmService {
 
       if (token != null) {
         await _saveToken(uid, token);
+        // Keep the location fresh for nearby alerts if the user opted in.
+        if (await nearbyAlertsEnabled()) {
+          unawaited(setNearbyAlerts(true));
+        }
       }
 
       _tokenRefreshSubscription ??= _messaging.onTokenRefresh.listen(
@@ -108,6 +115,39 @@ class FcmService {
     } catch (error) {
       debugPrint('FCM registration failed: $error');
     }
+  }
+
+  static const String _nearbyKey = 'nearby_alerts_enabled';
+
+  static Future<bool> nearbyAlertsEnabled() async {
+    return await SharedPreferencesAsync().getBool(_nearbyKey) ?? false;
+  }
+
+  /// "Alert me about fires near me": stores this phone's location with its
+  /// push token so the backend can include it in serious alerts within
+  /// 10 km of a node. Returns false if location isn't available.
+  static Future<bool> setNearbyAlerts(bool enabled) async {
+    final token = _token;
+    await SharedPreferencesAsync().setBool(_nearbyKey, enabled);
+    if (token == null) return !enabled;
+
+    if (!enabled) {
+      await _firestore.collection('pushTokens').doc(token).set({
+        'nearbyAlerts': false,
+      }, SetOptions(merge: true));
+      return true;
+    }
+
+    final position = await GpsService().getCurrentLocation();
+    if (position == null) return false;
+
+    await _firestore.collection('pushTokens').doc(token).set({
+      'nearbyAlerts': true,
+      'latitude': position.latitude,
+      'longitude': position.longitude,
+      'locationUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return true;
   }
 
   /// Removes this device's token so a signed-out phone stops getting alerts.

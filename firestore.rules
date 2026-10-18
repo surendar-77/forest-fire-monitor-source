@@ -35,19 +35,28 @@ service cloud.firestore {
         && data.longitude >= -180 && data.longitude <= 180;
     }
 
+    function validTerrain(data) {
+      return !('terrain' in data) || data.terrain in [
+        'pine', 'eucalyptus', 'grassland', 'bamboo', 'dry_deciduous', 'scrub',
+        'mixed', 'moist_deciduous', 'evergreen', 'desert', 'wetland'];
+    }
+
     // ------------------------------------------------------------------
-    // Monitoring nodes. Admins may set a node's name, zone and location.
+    // Monitoring nodes. Admins may set a node's name, zone, location and
+    // terrain (fuel type used by the risk model).
     // ------------------------------------------------------------------
     match /devices/{nodeId} {
       allow read: if signedIn();
 
       allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(['name', 'zone', 'latitude', 'longitude'])
-        && validCoordinates(request.resource.data);
+        && request.resource.data.keys().hasOnly(['name', 'zone', 'latitude', 'longitude', 'terrain'])
+        && (!('latitude' in request.resource.data) || validCoordinates(request.resource.data))
+        && validTerrain(request.resource.data);
 
       allow update: if isAdmin()
-        && changedKeys().hasOnly(['name', 'zone', 'latitude', 'longitude'])
-        && validCoordinates(request.resource.data);
+        && changedKeys().hasOnly(['name', 'zone', 'latitude', 'longitude', 'terrain'])
+        && (!changedKeys().hasAny(['latitude', 'longitude']) || validCoordinates(request.resource.data))
+        && validTerrain(request.resource.data);
 
       match /readings/{readingId} {
         allow read: if signedIn();
@@ -106,11 +115,14 @@ service cloud.firestore {
 
     // Push tokens, one document per device. A token moves to whoever signs
     // in on that device; only the owner can read or remove it.
+    // Location fields are present only when the owner opted in to alerts
+    // about fires near them.
     match /pushTokens/{token} {
       allow read, delete: if signedIn() && resource.data.uid == request.auth.uid;
       allow create, update: if signedIn()
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['uid', 'platform', 'updatedAt']);
+        && request.resource.data.keys().hasOnly(
+          ['uid', 'platform', 'updatedAt', 'nearbyAlerts', 'latitude', 'longitude', 'locationUpdatedAt']);
     }
 
     // ------------------------------------------------------------------

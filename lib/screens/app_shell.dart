@@ -4,7 +4,9 @@ import '../services/auth_service.dart';
 import '../services/data_source_controller.dart';
 import '../services/fcm_service.dart';
 import '../services/node_repository.dart';
+import '../services/notification_service.dart';
 import '../widgets/connection_banner.dart';
+import '../widgets/urgent_alert_dialog.dart';
 
 import 'alerts_screen.dart';
 import 'dashboard_screen.dart';
@@ -42,6 +44,7 @@ class _AppShellState extends State<AppShell> {
     }
 
     FcmService.openAlertsRequested.addListener(_handleAlertNavigation);
+    widget.repository.incomingAlert.addListener(_showIncomingAlert);
 
     if (FcmService.openAlertsRequested.value) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -64,6 +67,59 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _selectedIndex = 3;
     });
+  }
+
+  bool _alertDialogOpen = false;
+
+  /// Pop-up + alarm the moment an urgent alert arrives while the app is open.
+  Future<void> _showIncomingAlert() async {
+    final alert = widget.repository.incomingAlert.value;
+    if (alert == null || !mounted || _alertDialogOpen) return;
+    widget.repository.incomingAlert.value = null;
+    _alertDialogOpen = true;
+
+    try {
+      await NotificationService.startEmergencyAlarm();
+    } catch (error) {
+      debugPrint('Alarm unavailable: $error');
+    }
+
+    if (!mounted) return;
+    final action = await showDialog<UrgentAlertAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => UrgentAlertDialog(
+        alert: alert,
+        nodeName: widget.repository.node(alert.deviceId)?.name ?? alert.deviceId,
+        canAcknowledge: widget.auth.canRespondToAlerts,
+      ),
+    );
+    _alertDialogOpen = false;
+
+    try {
+      await NotificationService.stopEmergencyAlarm();
+    } catch (_) {}
+
+    if (!mounted) return;
+    switch (action) {
+      case UrgentAlertAction.acknowledge:
+        try {
+          await widget.repository.acknowledgeAlert(alert.id);
+        } catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Could not acknowledge: $error')),
+            );
+          }
+        }
+        setState(() => _selectedIndex = 3);
+      case UrgentAlertAction.view:
+        _dataSourceController.selectNode(alert.deviceId);
+        setState(() => _selectedIndex = 1);
+      case UrgentAlertAction.dismiss:
+      case null:
+        break;
+    }
   }
 
   Widget _screenFor(int index) {
@@ -108,6 +164,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     FcmService.openAlertsRequested.removeListener(_handleAlertNavigation);
+    widget.repository.incomingAlert.removeListener(_showIncomingAlert);
 
     _dataSourceController.dispose();
 

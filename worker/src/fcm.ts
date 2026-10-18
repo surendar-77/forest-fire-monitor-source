@@ -1,5 +1,15 @@
 /** Push alerts through FCM HTTP v1 (free on every Firebase plan). */
 
+/** Great-circle distance (haversine). */
+export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
 import type { Firestore, Plain } from "./firestore.js";
 
 /** Must match NotificationService._channelId in the Flutter app. */
@@ -8,6 +18,11 @@ const ANDROID_CHANNEL_ID = "forest_fire_alerts";
 export interface PushOptions {
   adminsOnly?: boolean;
   escalation?: number;
+  /**
+   * Also reach phones whose owners opted in to "fires near me" and last
+   * reported a location within this distance of the node.
+   */
+  nearby?: { latitude: number; longitude: number; radiusKm: number };
   /** Most sends allowed in this invocation (Workers Free: 50 subrequests). */
   maxSends: number;
 }
@@ -23,7 +38,9 @@ function title(alert: Alert, escalation: number): string {
         ? "Fire detected"
         : alert.type === "SMOKE"
           ? "Smoke detected"
-          : "High fire risk";
+          : alert.type === "SENSOR_ANOMALY"
+            ? "Smoke/heat anomaly"
+            : "High fire risk";
   return `${prefix}${alert.severity ?? "HIGH"} · ${kind} at ${alert.deviceId ?? "?"}`;
 }
 
@@ -69,9 +86,19 @@ export async function pushAlert(
   // Users who never opened their profile have no users/{uid} document yet;
   // they still get node alerts (but never admin escalations).
   const known = new Set(users.map((user) => user.id));
+  const near = options.nearby;
   const targets = tokens.filter((t) => {
     const uid = String(t.data.uid ?? "");
-    return audience.has(uid) || (!options.adminsOnly && !known.has(uid));
+    if (audience.has(uid) || (!options.adminsOnly && !known.has(uid))) return true;
+    const lat = t.data.latitude;
+    const lng = t.data.longitude;
+    return (
+      near != null &&
+      t.data.nearbyAlerts === true &&
+      typeof lat === "number" &&
+      typeof lng === "number" &&
+      distanceKm(near.latitude, near.longitude, lat, lng) <= near.radiusKm
+    );
   });
 
   if (targets.length === 0) {

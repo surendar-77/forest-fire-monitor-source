@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { decideAlert } from "./alertRules.js";
+import type { AnomalyResult } from "./anomaly.js";
 import { parseFeed } from "./thingspeak.js";
 
 const now = new Date("2026-10-18T12:00:00Z");
@@ -62,38 +63,42 @@ test("rejects empty or out-of-range readings", () => {
   );
 });
 
-test("a confident Normal frame raises nothing", () => {
+const normal: AnomalyResult = { score: 5, level: "NORMAL", z: {}, driver: null };
+const likely: AnomalyResult = { score: 90, level: "LIKELY", z: { mq1: 7.2 }, driver: "mq1" };
+const suspicious: AnomalyResult = { score: 55, level: "SUSPICIOUS", z: { mq1: 4.4 }, driver: "mq1" };
+
+test("a confident Normal frame with normal sensors raises nothing", () => {
   const reading = parseFeed({ ...feed, field7: "1", field8: "0.95" }, now, 120);
 
   assert.equal(reading.aiClass, "Normal");
   assert.equal(reading.fireDetected, false);
-  assert.equal(decideAlert(reading, "LOW"), null);
+  assert.equal(decideAlert(reading, normal, "LOW"), null);
 });
 
-test("camera Smoke class raises a SMOKE alert", () => {
+test("camera Smoke class raises a SMOKE alert, stronger when sensors or danger agree", () => {
   const reading = parseFeed({ ...feed, field7: "2", field8: "81" }, now, 120);
 
-  assert.deepEqual(decideAlert(reading, "LOW"), { type: "SMOKE", severity: "MODERATE" });
-  assert.deepEqual(decideAlert(reading, "CRITICAL"), { type: "SMOKE", severity: "HIGH" });
+  assert.deepEqual(decideAlert(reading, normal, "LOW"), { type: "SMOKE", severity: "MODERATE" });
+  assert.deepEqual(decideAlert(reading, suspicious, "LOW"), { type: "SMOKE", severity: "HIGH" });
+  assert.deepEqual(decideAlert(reading, normal, "VERY HIGH"), { type: "SMOKE", severity: "HIGH" });
 });
 
 test("camera Fire class raises a FIRE alert", () => {
   const reading = parseFeed({ ...feed, field7: "0", field8: "0.9" }, now, 120);
 
-  assert.deepEqual(decideAlert(reading, "LOW"), { type: "FIRE", severity: "HIGH" });
-  assert.deepEqual(decideAlert(reading, "HIGH"), { type: "FIRE", severity: "CRITICAL" });
+  assert.deepEqual(decideAlert(reading, normal, null), { type: "FIRE", severity: "HIGH" });
+  assert.deepEqual(decideAlert(reading, likely, null), { type: "FIRE", severity: "CRITICAL" });
 });
 
-test("low-confidence AI detection falls back to environmental risk", () => {
-  const reading = parseFeed({ ...feed, field7: "0", field8: "30" }, now, 120);
+test("a likely sensor anomaly alerts on its own; danger raises severity", () => {
+  const reading = parseFeed({ ...feed, field7: "1", field8: "0.9" }, now, 120);
 
-  assert.equal(decideAlert(reading, "LOW"), null);
-  assert.deepEqual(decideAlert(reading, "CRITICAL"), {
-    type: "ENVIRONMENTAL_RISK",
-    severity: "HIGH",
-  });
-  assert.deepEqual(decideAlert(reading, "HIGH"), {
-    type: "ENVIRONMENTAL_RISK",
-    severity: "MODERATE",
-  });
+  assert.deepEqual(decideAlert(reading, likely, "LOW"), { type: "SENSOR_ANOMALY", severity: "HIGH" });
+  assert.deepEqual(decideAlert(reading, likely, "HIGH"), { type: "SENSOR_ANOMALY", severity: "CRITICAL" });
+  assert.equal(decideAlert(reading, suspicious, "HIGH"), null);
+});
+
+test("low-confidence camera detection doesn't alert by itself", () => {
+  const reading = parseFeed({ ...feed, field7: "0", field8: "30" }, now, 120);
+  assert.equal(decideAlert(reading, normal, "VERY HIGH"), null);
 });

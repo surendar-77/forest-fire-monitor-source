@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
 
 import '../models/node_model.dart';
+import '../models/terrain.dart';
 
-/// Today's ML fire-danger rating for a node, with the weather behind it.
+/// Today's ML fire-danger rating for a node, adjusted for its terrain, with
+/// the hour-by-hour outlook and the weather behind it.
 class FireDangerCard extends StatelessWidget {
-  const FireDangerCard({super.key, required this.node, this.canSetLocation = false});
+  const FireDangerCard({
+    super.key,
+    required this.node,
+    this.canEdit = false,
+    this.onTerrainChanged,
+  });
 
   final NodeModel node;
-  final bool canSetLocation;
+  final bool canEdit;
+  final ValueChanged<String>? onTerrainChanged;
 
   static Color colorFor(String level) {
     switch (level) {
+      case 'HIGH':
       case 'VERY HIGH':
         return Colors.red;
-      case 'HIGH':
-        return Colors.deepOrange;
+      case 'MEDIUM':
       case 'MODERATE':
         return Colors.orange;
       default:
@@ -25,25 +33,7 @@ class FireDangerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final danger = node.danger;
-
-    if (danger == null) {
-      return Card(
-        child: ListTile(
-          leading: Icon(Icons.local_fire_department_outlined, color: Colors.grey.shade600),
-          title: const Text('Fire danger'),
-          subtitle: Text(
-            node.hasLocation
-                ? 'Calculated hourly from weather at the node; first rating soon.'
-                : canSetLocation
-                ? 'Set this node\'s location (below) to get a daily fire-danger rating.'
-                : 'Available once an administrator sets this node\'s location.',
-          ),
-        ),
-      );
-    }
-
-    final color = colorFor(danger.level);
-    final percent = (danger.probability * 100).round();
+    final terrain = Terrain.byId(node.terrain);
 
     return Card(
       child: Padding(
@@ -51,80 +41,220 @@ class FireDangerCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.local_fire_department, color: color),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'FIRE DANGER TODAY',
-                    style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    danger.level,
-                    style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '$percent%',
-                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: color),
-                ),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'chance conditions match fire days',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: danger.probability.clamp(0, 1),
-                minHeight: 8,
-                color: color,
-                backgroundColor: color.withValues(alpha: 0.12),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 16,
-              runSpacing: 6,
-              children: [
-                _fact('Noon temp', danger.temperature, '°C', 1),
-                _fact('Humidity', danger.humidity, '%', 0),
-                _fact('Wind', danger.wind, ' km/h', 0),
-                _fact('Rain 24 h', danger.rain24h, ' mm', 1),
-                _fact('Fuel dryness (FFMC)', danger.ffmc, '', 0),
-                _fact('Spread index (ISI)', danger.isi, '', 1),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${danger.forecast ? 'Based on today\'s noon forecast' : 'Based on today\'s noon weather'}'
-              ' · ML model trained on the Algerian Forest Fires dataset (~89% accuracy in tests)',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-            ),
+            _terrainRow(context, terrain),
+            const Divider(height: 22),
+            if (danger == null)
+              Text(
+                node.hasLocation
+                    ? 'Fire danger is calculated hourly from weather at the '
+                          'node; the first rating appears within the hour.'
+                    : canEdit
+                    ? "Set this node's location (below) to get fire-danger "
+                          'ratings and the hourly outlook.'
+                    : "Available once an administrator sets this node's location.",
+                style: TextStyle(color: Colors.grey.shade700),
+              )
+            else
+              ..._dangerBody(danger),
           ],
         ),
       ),
     );
+  }
+
+  Widget _terrainRow(BuildContext context, Terrain terrain) {
+    return Row(
+      children: [
+        Icon(Icons.park_outlined, color: Colors.green.shade700),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Terrain', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+              Text(
+                '${terrain.label}  (fuel ×${terrain.factor})',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+        if (canEdit && onTerrainChanged != null)
+          PopupMenuButton<String>(
+            tooltip: 'Change terrain',
+            icon: const Icon(Icons.edit_outlined),
+            onSelected: onTerrainChanged,
+            itemBuilder: (context) => [
+              for (final t in Terrain.all)
+                CheckedPopupMenuItem(
+                  value: t.id,
+                  checked: t.id == terrain.id,
+                  child: Text('${t.label}  ×${t.factor}'),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _dangerBody(FireDanger danger) {
+    final color = colorFor(danger.level);
+    final percent = (danger.probability * 100).round();
+    final peak = danger.peak;
+
+    return [
+      Row(
+        children: [
+          Icon(Icons.local_fire_department, color: color),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'FIRE DANGER TODAY',
+              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              danger.level,
+              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '$percent%',
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'chance of fire-prone conditions for this terrain',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+      if (peak != null) ...[
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(Icons.schedule, size: 18, color: colorFor(peak.level)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Highest in the next 24 h: ${peak.hourLabel} '
+                '(${(peak.probability * 100).round()}%, ${peak.level})',
+                style: TextStyle(fontWeight: FontWeight.w600, color: colorFor(peak.level)),
+              ),
+            ),
+          ],
+        ),
+      ],
+      if (danger.timeline.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        _timeline(danger.timeline),
+        ..._riskyHours(danger.timeline),
+      ],
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 16,
+        runSpacing: 6,
+        children: [
+          _fact('Noon temp', danger.temperature, '°C', 1),
+          _fact('Humidity', danger.humidity, '%', 0),
+          _fact('Wind', danger.wind, ' km/h', 0),
+          _fact('Rain 24 h', danger.rain24h, ' mm', 1),
+          _fact('Fuel dryness (FFMC)', danger.ffmc, '', 0),
+          _fact('Spread index (ISI)', danger.isi, '', 1),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Text(
+        '${danger.forecast ? "Based on today's noon forecast" : "Based on today's noon weather"}'
+        ' · ML model trained on the Algerian Forest Fires dataset (~89% accuracy '
+        'in tests), adjusted for terrain fuel type',
+        style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+      ),
+    ];
+  }
+
+  /// 24 small bars, one per hour, coloured by level.
+  Widget _timeline(List<DangerHour> hours) {
+    return SizedBox(
+      height: 64,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final (i, h) in hours.indexed)
+            Expanded(
+              child: Tooltip(
+                message: '${h.hourLabel}  ${(h.probability * 100).round()}% ${h.level}',
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(
+                      height: 4 + 40 * h.probability.clamp(0, 1),
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: colorFor(h.level),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      i % 6 == 0 ? h.hourLabel.substring(0, 2) : '',
+                      style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// "High danger 12:00–16:00" style summary of risky stretches.
+  List<Widget> _riskyHours(List<DangerHour> hours) {
+    final spans = <String>[];
+    int? start;
+    for (var i = 0; i <= hours.length; i++) {
+      final risky = i < hours.length && hours[i].level != 'LOW';
+      if (risky && start == null) start = i;
+      if (!risky && start != null) {
+        final from = hours[start].hourLabel;
+        final to = hours[i - 1].hourLabel;
+        final worst = hours.sublist(start, i).any((h) => h.level == 'HIGH') ? 'High' : 'Medium';
+        spans.add(from == to ? '$worst at $from' : '$worst $from–$to');
+        start = null;
+      }
+    }
+    if (spans.isEmpty) {
+      return [
+        Text(
+          'No medium or high danger expected in the next 24 h.',
+          style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+        ),
+      ];
+    }
+    return [
+      Text(
+        'Watch: ${spans.join(', ')}',
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    ];
   }
 
   Widget _fact(String label, double? value, String unit, int digits) {

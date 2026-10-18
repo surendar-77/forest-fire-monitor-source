@@ -13,11 +13,14 @@
     "resolveJsonModule": true
   },
   "include": [
-    "src/risk.ts",
     "src/thingspeak.ts",
     "src/alertRules.ts",
     "src/firestore.ts",
     "src/deviceAlert.ts",
+    "src/anomaly.ts",
+    "src/terrain.ts",
+    "src/fcm.ts",
+    "src/fireServices.ts",
     "src/fwi.ts",
     "src/fireDanger.ts",
     "src/weather.ts",

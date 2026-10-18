@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../config/app_config.dart';
 import '../models/live_reading.dart';
-import '../utils/risk_utils.dart';
 
 /// Per-second readings straight from the node (Realtime Database). Listens
 /// only while visible and only to the selected node, to keep the free
@@ -107,7 +106,6 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
 
     final stale = reading.isStaleAt(DateTime.now());
     final statusColor = stale ? Colors.orange : Colors.green;
-    final level = reading.riskLevel ?? 'LOW';
 
     return Card(
       child: Padding(
@@ -146,7 +144,6 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
                 _value('Smoke 2', reading.smoke2?.toDouble(), '', 0),
                 if (reading.temperature2 != null)
                   _value('Temp 2', reading.temperature2, '°C', 1),
-                _riskValue(reading.riskScore, level),
               ],
             ),
             if (reading.aiClass != null) ...[
@@ -185,28 +182,6 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
         Text(
           value == null ? '--' : '${value.toStringAsFixed(digits)}$unit',
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  Widget _riskValue(int? score, String level) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('Risk', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-        Text(
-          level == 'WARMUP'
-              ? 'Sensors warming up'
-              : score == null
-              ? '--'
-              : '$score $level',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: riskColor(level),
-          ),
         ),
       ],
     );

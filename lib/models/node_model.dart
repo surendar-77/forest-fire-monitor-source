@@ -18,6 +18,12 @@ class FireDanger {
   final bool forecast;
   final DateTime? updatedAt;
   final String? model;
+  final String? terrain;
+  final double? baseProbability;
+
+  /// Next 24 h, hour by hour (terrain-adjusted).
+  final List<DangerHour> timeline;
+  final DangerHour? peak;
 
   const FireDanger({
     required this.probability,
@@ -32,6 +38,10 @@ class FireDanger {
     this.forecast = false,
     this.updatedAt,
     this.model,
+    this.terrain,
+    this.baseProbability,
+    this.timeline = const [],
+    this.peak,
   });
 
   static FireDanger? fromMap(dynamic value) {
@@ -52,8 +62,34 @@ class FireDanger {
       forecast: parseBool(value['forecast'], false),
       updatedAt: parseDateTimeOrNull(value['updatedAt']),
       model: parseStringOrNull(value['model']),
+      terrain: parseStringOrNull(value['terrain']),
+      baseProbability: parseDoubleOrNull(value['baseProbability']),
+      timeline: value['timeline'] is List
+          ? (value['timeline'] as List).map(DangerHour.fromMap).whereType<DangerHour>().toList()
+          : const [],
+      peak: DangerHour.fromMap(value['peak']),
     );
   }
+}
+
+class DangerHour {
+  /// Local time at the node, "2026-10-19T14:00".
+  final String time;
+  final double probability;
+  final String level;
+
+  const DangerHour(this.time, this.probability, this.level);
+
+  static DangerHour? fromMap(dynamic value) {
+    if (value is! Map) return null;
+    final p = parseDoubleOrNull(value['probability']);
+    final t = parseStringOrNull(value['time']);
+    if (p == null || t == null) return null;
+    return DangerHour(t, p, parseString(value['level'], 'LOW'));
+  }
+
+  /// "14:00"
+  String get hourLabel => time.length >= 16 ? time.substring(11, 16) : time;
 }
 
 /// A monitoring node, read from `devices/{nodeId}`.
@@ -72,6 +108,16 @@ class NodeModel {
   final bool hasLocation;
   final FireDanger? danger;
 
+  /// ML detection state against this node's learned baseline:
+  /// LEARNING, NORMAL, ELEVATED, SUSPICIOUS or LIKELY.
+  final String? anomalyLevel;
+
+  /// Sensor furthest from normal (mq1, mq2, temp, hum), if any.
+  final String? anomalyDriver;
+
+  /// Terrain / fuel type id (see Terrain), set by an administrator.
+  final String? terrain;
+
   const NodeModel({
     required this.id,
     required this.name,
@@ -81,6 +127,9 @@ class NodeModel {
     this.zone,
     this.lastSeen,
     this.danger,
+    this.anomalyLevel,
+    this.anomalyDriver,
+    this.terrain,
   });
 
   double get latitude => detection.latitude;
@@ -146,6 +195,13 @@ class NodeModel {
       reportedStatus: parseString(data['status'], 'UNKNOWN').toUpperCase(),
       hasLocation: hasLocation,
       danger: FireDanger.fromMap(data['danger']),
+      anomalyLevel: data['anomaly'] is Map
+          ? parseStringOrNull((data['anomaly'] as Map)['level'])
+          : null,
+      anomalyDriver: data['anomaly'] is Map
+          ? parseStringOrNull((data['anomaly'] as Map)['driver'])
+          : null,
+      terrain: parseStringOrNull(data['terrain']),
     );
   }
 }

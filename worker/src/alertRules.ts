@@ -1,41 +1,40 @@
-import type { RiskLevel } from "./risk.js";
+import type { AnomalyResult } from "./anomaly.js";
 import type { SensorReading } from "./thingspeak.js";
 
 export interface AlertDecision {
-  type: "FIRE" | "SMOKE" | "ENVIRONMENTAL_RISK";
-  severity: RiskLevel;
+  type: "FIRE" | "SMOKE" | "SENSOR_ANOMALY";
+  severity: "MODERATE" | "HIGH" | "CRITICAL";
 }
 
 export const AI_FIRE_CONFIDENCE_THRESHOLD = 0.5;
 
+const HIGH_DANGER = new Set(["HIGH", "VERY HIGH"]);
+
 /**
- * Whether a reading should raise an alert. Mirrors integrated_monitor.py:
- * CRITICAL environmental risk -> HIGH alert, HIGH risk -> MODERATE alert.
- * Unlike the Python bridge it also acts on the node's camera AI (ThingSpeak
- * fields 7/8: Fire or Smoke class with enough confidence), escalating when
- * the environment agrees.
+ * Whether a reading should raise an alert, from the ML signals only:
+ * the camera model (ThingSpeak fields 7/8), the node's smoke/heat anomaly
+ * score against its learned baseline, and today's fire-danger rating, which
+ * raises severity when conditions favour spread.
  */
 export function decideAlert(
   reading: SensorReading,
-  riskLevel: RiskLevel,
+  anomaly: AnomalyResult,
+  dangerLevel: string | null,
 ): AlertDecision | null {
   const confident = reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD;
-  const environmentAgrees = riskLevel === "HIGH" || riskLevel === "CRITICAL";
+  const sensorsAgree = anomaly.level === "SUSPICIOUS" || anomaly.level === "LIKELY";
+  const highDanger = dangerLevel != null && HIGH_DANGER.has(dangerLevel);
 
   if (reading.fireDetected && confident) {
-    return { type: "FIRE", severity: environmentAgrees ? "CRITICAL" : "HIGH" };
+    return { type: "FIRE", severity: sensorsAgree || highDanger ? "CRITICAL" : "HIGH" };
   }
 
   if (reading.smokeDetected && confident) {
-    return { type: "SMOKE", severity: environmentAgrees ? "HIGH" : "MODERATE" };
+    return { type: "SMOKE", severity: sensorsAgree || highDanger ? "HIGH" : "MODERATE" };
   }
 
-  if (riskLevel === "CRITICAL") {
-    return { type: "ENVIRONMENTAL_RISK", severity: "HIGH" };
-  }
-
-  if (riskLevel === "HIGH") {
-    return { type: "ENVIRONMENTAL_RISK", severity: "MODERATE" };
+  if (anomaly.level === "LIKELY") {
+    return { type: "SENSOR_ANOMALY", severity: highDanger ? "CRITICAL" : "HIGH" };
   }
 
   return null;

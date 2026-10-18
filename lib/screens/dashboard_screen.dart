@@ -107,6 +107,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Future<void> _setTerrain(String nodeId, String terrain) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.controller.repository.updateNodeTerrain(nodeId, terrain);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Terrain saved. Risk updates with the next reading.')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not save terrain: $error')));
+    }
+  }
+
   void _openHistory() {
     final node = _node;
 
@@ -171,7 +183,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 8),
                 LiveFeedCard(nodeId: node.id),
                 const SizedBox(height: 8),
-                FireDangerCard(node: node, canSetLocation: widget.auth.isAdmin),
+                FireDangerCard(
+                  node: node,
+                  canEdit: widget.auth.isAdmin,
+                  onTerrainChanged: (terrain) => _setTerrain(node.id, terrain),
+                ),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
@@ -185,8 +201,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(height: 16),
 
-              // FIRE RISK
+              // FIRE RISK (ML detection against the node's learned baseline)
               RiskCard(riskLevel: data.riskLevel, riskScore: data.riskScore),
+
+              if (node != null) _detectionCaption(node),
 
               const SizedBox(height: 24),
 
@@ -367,6 +385,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Explains the ML risk score under the risk card.
+  Widget _detectionCaption(NodeModel node) {
+    const sensorNames = {
+      'mq1': 'smoke sensor 1',
+      'mq2': 'smoke sensor 2',
+      'temp1': 'temperature 1',
+      'temp2': 'temperature 2',
+      'hum1': 'humidity 1 (drier)',
+      'hum2': 'humidity 2 (drier)',
+    };
+
+    final level = node.anomalyLevel;
+    final String text;
+    if (level == null || level == 'LEARNING') {
+      text =
+          "Detection model is learning this node's normal readings for its "
+          '6 sensors (about an hour of data needed). Camera AI alerts work '
+          'meanwhile.';
+    } else if (level == 'NORMAL') {
+      text = "All 6 sensors are within this node's learned normal range.";
+    } else {
+      final driver = sensorNames[node.anomalyDriver] ?? 'sensors';
+      text =
+          '${level[0]}${level.substring(1).toLowerCase()}: $driver is outside '
+          "this node's learned normal range.";
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.auto_graph, size: 16, color: Colors.grey.shade600),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+            ),
+          ),
+        ],
       ),
     );
   }

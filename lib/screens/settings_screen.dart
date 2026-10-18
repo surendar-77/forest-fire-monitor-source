@@ -57,6 +57,7 @@ class SettingsScreen extends StatelessWidget {
               const Divider(),
               _sectionTitle(context, 'Alert notifications'),
               _SubscriptionTile(auth: auth, repository: repository, user: user),
+              const _NearbyAlertsTile(),
               const Divider(),
               _sectionTitle(context, 'Device'),
               ListTile(
@@ -313,6 +314,56 @@ class _SetRoleDialogState extends State<_SetRoleDialog> {
           child: Text(_busy ? 'SAVING...' : 'SAVE'),
         ),
       ],
+    );
+  }
+}
+
+class _NearbyAlertsTile extends StatefulWidget {
+  const _NearbyAlertsTile();
+
+  @override
+  State<_NearbyAlertsTile> createState() => _NearbyAlertsTileState();
+}
+
+class _NearbyAlertsTileState extends State<_NearbyAlertsTile> {
+  bool _enabled = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FcmService.nearbyAlertsEnabled().then((value) {
+      if (mounted) setState(() => _enabled = value);
+    });
+  }
+
+  Future<void> _toggle(bool value) async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await FcmService.setNearbyAlerts(value);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _enabled = ok ? value : false;
+    });
+    if (!ok) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Allow location access to get alerts about nearby fires.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.near_me_outlined),
+      title: const Text('Alert me about fires near me'),
+      subtitle: const Text(
+        'Serious alerts from any node within 10 km of this phone. '
+        "Shares this phone's location with the alert service.",
+      ),
+      value: _enabled,
+      onChanged: _busy ? null : _toggle,
     );
   }
 }

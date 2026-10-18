@@ -11,6 +11,7 @@ class RiskCard extends StatelessWidget {
       case 'LOW':
         return Colors.green;
       case 'MODERATE':
+      case 'MEDIUM':
         return Colors.orange;
       case 'HIGH':
         return Colors.deepOrange;
@@ -26,6 +27,7 @@ class RiskCard extends StatelessWidget {
       case 'LOW':
         return Icons.check_circle;
       case 'MODERATE':
+      case 'MEDIUM':
         return Icons.warning_amber_rounded;
       case 'HIGH':
         return Icons.warning;

@@ -14,22 +14,35 @@
  * every minute.
  */
 
-import { decideAlert, OPEN_STATUSES } from "./alertRules.js";
+import { AI_FIRE_CONFIDENCE_THRESHOLD, decideAlert, OPEN_STATUSES } from "./alertRules.js";
+import {
+  hourStats,
+  isLearnableHour,
+  scoreReading,
+  updateBaseline,
+  type Baseline,
+  type Reading,
+} from "./anomaly.js";
 import { parseDeviceAlert, safeEqual } from "./deviceAlert.js";
 import { dangerLevel, fireDangerModel, fireDangerProbability } from "./fireDanger.js";
 import { ffmc, ffmcAfter, isi } from "./fwi.js";
-import { dangerInputs, fetchHourlyWeather } from "./weather.js";
+import { dangerInputs, fetchHourlyWeather, upcomingHours } from "./weather.js";
+import { adjustProbability, combineRisk, riskLevel as riskLevel3, terrainFor, type Terrain } from "./terrain.js";
 import { pushAlert } from "./fcm.js";
+import { alertMessage, notifyStations, parseFireServices, stationsFor } from "./fireServices.js";
 import { Firestore, newDocId, type Doc, type Plain, type Write } from "./firestore.js";
 import { accessToken, type ServiceAccount } from "./google.js";
 import { lookupUser, setClaims } from "./identity.js";
-import { calculateRisk } from "./risk.js";
 import { fetchLastFeed, parseFeed } from "./thingspeak.js";
 
 export interface Env {
   /** The Firebase service-account JSON, stored with `wrangler secret put`. */
   FIREBASE_SERVICE_ACCOUNT: string;
   READING_RETENTION_DAYS?: string;
+  /** Telegram bot for fire services (optional), `wrangler secret put`. */
+  TELEGRAM_BOT_TOKEN?: string;
+  /** Opted-in phones within this distance of a node get its serious alerts. */
+  NEARBY_RADIUS_KM?: string;
 }
 
 const VERSION = "worker-1.0.0";
@@ -165,13 +178,18 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
     return; // nothing new; the 5-minute job turns lastSeen age into STALE/OFFLINE
   }
 
-  const risk = calculateRisk({
-    temperature: reading.temperature,
-    humidity: reading.humidity,
-    mq2_1: reading.mq2_1,
-    mq2_2: reading.mq2_2,
-    temperature2: reading.temperature2,
-    humidity2: reading.humidity2,
+  // Score the six sensors against this node's learned baseline, then combine
+  // with today's weather fire danger and the node's terrain.
+  const anomaly = scoreReading(toAnomalyReading(reading), parseBaseline(device?.data.baseline));
+  const danger = asMap(device?.data.danger);
+  const terrain = terrainFor(device?.data.terrain);
+  const confident = reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD;
+  const risk = combineRisk({
+    anomalyScore: anomaly.score,
+    dangerProbability: typeof danger?.baseProbability === "number" ? danger.baseProbability : null,
+    terrain,
+    cameraFire: reading.fireDetected && confident,
+    cameraSmoke: reading.smokeDetected && confident,
   });
   const fireProbability = reading.fireDetected ? reading.aiConfidence * 100 : 0;
   const smokeProbability = reading.smokeDetected ? reading.aiConfidence * 100 : 0;
@@ -196,9 +214,10 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         aiConfidence: reading.aiConfidence,
         fireProbability,
         smokeProbability,
-        riskPoints: risk.points,
         riskScore: risk.score,
         riskLevel: risk.level,
+        riskDriver: risk.driver,
+        anomaly: { score: anomaly.score, level: anomaly.level, z: anomaly.z, driver: anomaly.driver },
         thingspeakEntryId: reading.entryId,
         sensorDataAgeSeconds: reading.ageSeconds,
         sensorDataStale: false,
@@ -217,12 +236,15 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         fireProbability,
         smokeProbability,
         riskScore: risk.score,
+        anomalyScore: anomaly.score,
+        anomalyLevel: anomaly.level,
         entryId: reading.entryId,
       },
     },
   ]);
 
-  const decision = decideAlert(reading, risk.level);
+  const dangerLevel = typeof danger?.level === "string" ? danger.level : null;
+  const decision = decideAlert(reading, anomaly, dangerLevel);
   if (decision) {
     await createAlertIfNew(ctx, channel.nodeId, decision.type, decision.severity, {
       fireProbability,
@@ -239,9 +261,51 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         aiClass: reading.aiClass,
         aiConfidence: reading.aiConfidence,
         entryId: reading.entryId,
+        anomalyScore: anomaly.score,
+        anomalyDriver: anomaly.driver,
+        anomalyZ: anomaly.z,
       },
     });
   }
+}
+
+function asMap(value: Plain | undefined): Record<string, Plain> | null {
+  return value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)
+    ? (value as Record<string, Plain>)
+    : null;
+}
+
+/** The six sensor values (worst of the minute) as anomaly inputs. */
+function toAnomalyReading(reading: {
+  mq2_1: number;
+  mq2_2: number;
+  temperature: number | null;
+  humidity: number | null;
+  temperature2: number | null;
+  humidity2: number | null;
+}): Reading {
+  return {
+    mq1: reading.mq2_1,
+    mq2: reading.mq2_2,
+    temp1: reading.temperature,
+    temp2: reading.temperature2,
+    hum1: reading.humidity,
+    hum2: reading.humidity2,
+  };
+}
+
+function parseBaseline(value: Plain | undefined): Baseline | null {
+  if (!value || typeof value !== "object" || Array.isArray(value) || value instanceof Date) return null;
+  const b = value as Record<string, Plain>;
+  const raw = b.sensors;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw instanceof Date) return null;
+  const sensors = { ...(raw as Record<string, unknown>) };
+  // Baselines from the four-sensor version stored the first DHT22 as temp/hum.
+  if (sensors.temp && !sensors.temp1) sensors.temp1 = sensors.temp;
+  if (sensors.hum && !sensors.hum1) sensors.hum1 = sensors.hum;
+  delete sensors.temp;
+  delete sensors.hum;
+  return { sensors: sensors as Baseline["sensors"], samples: asNumber(b.samples) };
 }
 
 async function ingestAll(ctx: Context): Promise<void> {
@@ -266,14 +330,61 @@ async function pushNewAlerts(ctx: Context): Promise<void> {
 
   for (const alert of recent) {
     if (alert.data.status !== "ACTIVE" || alert.data.pushedAt != null) continue;
-
-    await run(`push ${alert.id}`, async () => {
-      await pushAlert(ctx.fs, ctx.projectId, ctx.token, alert.id, alert.data, {
-        maxSends: budget(ctx, 3),
-      });
-      await ctx.fs.set(alert.path, { pushedAt: new Date() }, true);
-    });
+    await run(`push ${alert.id}`, () => sendNewAlert(ctx, alert.id, alert.path, alert.data));
   }
+}
+
+const SERIOUS = new Set(["HIGH", "CRITICAL"]);
+
+/**
+ * Everything that happens once for a new alert: push to subscribed officers
+ * (plus opted-in phones near the node for serious alerts), then tell fire
+ * services by Telegram for serious alerts.
+ */
+async function sendNewAlert(
+  ctx: Context,
+  alertId: string,
+  path: string,
+  alert: Record<string, Plain>,
+): Promise<void> {
+  const serious = SERIOUS.has(String(alert.severity));
+  const lat = typeof alert.latitude === "number" ? alert.latitude : null;
+  const lng = typeof alert.longitude === "number" ? alert.longitude : null;
+  const located = lat != null && lng != null && (lat !== 0 || lng !== 0);
+  const radiusKm = Number(ctx.env.NEARBY_RADIUS_KM ?? "10");
+
+  await pushAlert(ctx.fs, ctx.projectId, ctx.token, alertId, alert, {
+    maxSends: budget(ctx, 6),
+    nearby: serious && located ? { latitude: lat, longitude: lng, radiusKm } : undefined,
+  });
+  await ctx.fs.set(path, { pushedAt: new Date() }, true);
+
+  const botToken = ctx.env.TELEGRAM_BOT_TOKEN;
+  if (!serious || !botToken || alert.fireServicesNotifiedAt != null) return;
+
+  const config = parseFireServices((await ctx.fs.get("config/fireServices"))?.data);
+  if (config.stations.length === 0) return;
+
+  const device = await ctx.fs.get(`devices/${String(alert.deviceId ?? "")}`);
+  const nodeName = typeof device?.data.name === "string" ? device.data.name : String(alert.deviceId ?? "?");
+  const stations = stationsFor(config, lat, lng);
+  const delivered = await notifyStations(
+    botToken,
+    stations,
+    alertMessage(alert, nodeName),
+    located ? { latitude: lat, longitude: lng } : null,
+  );
+
+  await ctx.fs.set(
+    path,
+    {
+      fireServicesNotifiedAt: new Date(),
+      fireServicesNotified: stations.map((s) => s.name),
+      fireServicesDelivered: delivered,
+    },
+    true,
+  );
+  console.log(`Alert ${alertId}: fire services told ${delivered}/${stations.length}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +596,37 @@ async function hourlyRollup(ctx: Context): Promise<void> {
       riskMax = Math.max(riskMax, asNumber(data.riskScore));
     }
 
+    // Learn this hour into the node's baseline unless it looked anomalous
+    // (so a smouldering fire isn't learned as "normal").
+    const scores = readings.map(({ data }) => asNumber(data.anomalyScore ?? data.riskScore));
+    if (isLearnableHour(scores)) {
+      const num = (v: Plain | undefined) => (typeof v === "number" ? v : null);
+      const hourReadings: Reading[] = readings.map(({ data }) => ({
+        mq1: num(data.mq2_1),
+        mq2: num(data.mq2_2),
+        temp1: num(data.temperature),
+        temp2: num(data.temperature2),
+        hum1: num(data.humidity),
+        hum2: num(data.humidity2),
+      }));
+      const baseline = updateBaseline(
+        parseBaseline(device.data.baseline),
+        hourStats(hourReadings),
+        readings.length,
+      );
+      writes.push({
+        set: device.path,
+        merge: true,
+        data: {
+          baseline: {
+            sensors: baseline.sensors as unknown as Record<string, Plain>,
+            samples: baseline.samples,
+            updatedAt: new Date(),
+          },
+        },
+      });
+    }
+
     writes.push({
       set: `${device.path}/hourly/${hourKey(start)}`,
       data: {
@@ -514,7 +656,11 @@ async function hourlyRollup(ctx: Context): Promise<void> {
  * rebuilt each run from 14 days of noon weather (it forgets older weather
  * within days), so no state needs storing.
  */
-async function nodeFireDanger(latitude: number, longitude: number): Promise<Record<string, Plain>> {
+async function nodeFireDanger(
+  latitude: number,
+  longitude: number,
+  terrain: Terrain,
+): Promise<Record<string, Plain>> {
   const weather = await fetchHourlyWeather(latitude, longitude);
   const inputs = dangerInputs(weather.hourly, weather.nowLocal);
   if (!inputs) throw new Error("No usable weather for this location");
@@ -523,12 +669,33 @@ async function nodeFireDanger(latitude: number, longitude: number): Promise<Reco
   const { temp, rh, wind, rain24h } = inputs.today;
   const ffmcToday = ffmc(temp, rh, wind, rain24h, ffmcYesterday);
   const isiToday = isi(ffmcToday, wind);
-  const probability = fireDangerProbability([temp, rain24h, isiToday]);
+  const baseProbability = fireDangerProbability([temp, rain24h, isiToday]);
+  const probability = adjustProbability(baseProbability, terrain.factor);
 
   const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
+
+  // When: the same model on each forecast hour of the next day, from
+  // yesterday's fuel moisture. An approximation (trained on noon weather),
+  // but it places the afternoon peak and overnight lull correctly.
+  const timeline = upcomingHours(weather.hourly, weather.nowLocal, 24).map(({ time, weather: h }) => {
+    const f = ffmc(h.temp, h.rh, h.wind, h.rain24h, ffmcYesterday);
+    const p = adjustProbability(fireDangerProbability([h.temp, h.rain24h, isi(f, h.wind)]), terrain.factor);
+    return { time, probability: round(p, 3), level: riskLevel3(p) };
+  });
+  const peak = timeline.reduce<(typeof timeline)[number] | null>(
+    (best, hour) => (!best || hour.probability > best.probability ? hour : best),
+    null,
+  );
+
   return {
     probability: round(probability, 3),
-    level: dangerLevel(probability),
+    baseProbability: round(baseProbability, 3),
+    level: riskLevel3(probability),
+    modelLevel: dangerLevel(baseProbability),
+    terrain: terrain.id,
+    terrainFactor: terrain.factor,
+    timeline: timeline as unknown as Plain[],
+    peak: peak as unknown as Plain,
     ffmc: round(ffmcToday, 1),
     isi: round(isiToday, 2),
     temperature: round(temp, 1),
@@ -555,7 +722,7 @@ async function fireDangerJob(ctx: Context, devices: Doc[]): Promise<void> {
         writes.push({
           set: device.path,
           merge: true,
-          data: { danger: await nodeFireDanger(lat, lng) },
+          data: { danger: await nodeFireDanger(lat, lng, terrainFor(device.data.terrain)) },
         });
       } catch (error) {
         console.error(`fire danger ${device.id}:`, error instanceof Error ? error.message : error);
@@ -646,15 +813,10 @@ async function handleDeviceAlert(request: Request, env: Env): Promise<Response> 
 
   if (!alertId) return json(200, { status: "duplicate" });
 
-  // Push now rather than on the next minute's sweep.
+  // Push and tell fire services now rather than on the next minute's sweep.
   const created = await ctx.fs.get(`alerts/${alertId}`);
   if (created) {
-    await run(`push ${alertId}`, async () => {
-      await pushAlert(ctx.fs, ctx.projectId, ctx.token, alertId, created.data, {
-        maxSends: budget(ctx, 2),
-      });
-      await ctx.fs.set(created.path, { pushedAt: new Date() }, true);
-    });
+    await run(`push ${alertId}`, () => sendNewAlert(ctx, alertId, created.path, created.data));
   }
 
   return json(201, { status: "created", alertId });

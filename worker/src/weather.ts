@@ -47,7 +47,7 @@ export async function fetchHourlyWeather(
   );
   url.searchParams.set("wind_speed_unit", "kmh");
   url.searchParams.set("past_days", "14");
-  url.searchParams.set("forecast_days", "1");
+  url.searchParams.set("forecast_days", "2"); // covers the next 24 h at any time of day
   url.searchParams.set("timezone", "auto");
 
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -73,6 +73,22 @@ function at(w: HourlyWeather, i: number): NoonWeather | null {
   const wind = w.wind_speed_10m[i];
   if (temp == null || rh == null || wind == null) return null;
   return { temp, rh, wind, rain24h: rainBefore(w, i) };
+}
+
+export interface HourWeather {
+  time: string;
+  weather: NoonWeather;
+}
+
+/** Forecast for the next `count` hours after now (for the danger timeline). */
+export function upcomingHours(w: HourlyWeather, nowLocal: string, count = 24): HourWeather[] {
+  const hours: HourWeather[] = [];
+  for (let i = 0; i < w.time.length && hours.length < count; i++) {
+    if (w.time[i].slice(0, 13) <= nowLocal) continue;
+    const weather = at(w, i);
+    if (weather) hours.push({ time: w.time[i], weather });
+  }
+  return hours;
 }
 
 /**

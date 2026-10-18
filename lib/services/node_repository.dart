@@ -39,6 +39,12 @@ class NodeRepository extends ChangeNotifier {
   List<AlertModel> _alerts = [];
 
   bool _nodesLoaded = false;
+  bool _alertsLoaded = false;
+  final Set<String> _seenAlertIds = {};
+
+  /// Newly arrived urgent alert (camera fire/smoke, or High/Critical) for
+  /// the in-app pop-up. Only alerts that appear after the app has loaded.
+  final ValueNotifier<AlertModel?> incomingAlert = ValueNotifier(null);
   bool _backendLoaded = false;
   DateTime? _backendHeartbeat;
   bool _fromCache = false;
@@ -152,6 +158,8 @@ class NodeRepository extends ChangeNotifier {
     _nodes = {};
     _alerts = [];
     _nodesLoaded = false;
+    _alertsLoaded = false;
+    _seenAlertIds.clear();
     _error = null;
 
     notifyListeners();
@@ -174,6 +182,7 @@ class NodeRepository extends ChangeNotifier {
   }
 
   void _handleAlerts(QuerySnapshot<Map<String, dynamic>> snapshot) {
+    final previouslyLoaded = _alertsLoaded;
     _alerts = snapshot.docs.map((doc) {
       final data = doc.data();
       final node = _nodes[data['deviceId']?.toString()];
@@ -185,6 +194,23 @@ class NodeRepository extends ChangeNotifier {
         fallbackLongitude: node?.longitude ?? _fallbackLongitude,
       );
     }).toList();
+
+    // Pop up alerts that arrive while the app is open; ignore the backlog
+    // delivered with the first snapshot.
+    for (final alert in _alerts) {
+      final isNew = _seenAlertIds.add(alert.id);
+      if (!isNew || !previouslyLoaded || snapshot.metadata.isFromCache) continue;
+      final urgent =
+          alert.type == 'FIRE' ||
+          alert.type == 'SMOKE' ||
+          alert.severity == 'HIGH' ||
+          alert.severity == 'CRITICAL';
+      final recent = DateTime.now().difference(alert.detectedAt).inMinutes < 15;
+      if (alert.status == AlertStatus.active && urgent && recent) {
+        incomingAlert.value = alert;
+      }
+    }
+    _alertsLoaded = true;
 
     _updateSyncState(snapshot.metadata);
     notifyListeners();
@@ -248,6 +274,12 @@ class NodeRepository extends ChangeNotifier {
       'name': name,
       'latitude': latitude,
       'longitude': longitude,
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> updateNodeTerrain(String nodeId, String terrain) {
+    return _firestore.collection('devices').doc(nodeId).set({
+      'terrain': terrain,
     }, SetOptions(merge: true));
   }
 
