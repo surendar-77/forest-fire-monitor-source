@@ -42,8 +42,18 @@ Future<void> main() async {
     );
   }
 
-  // Notification setup can fail on some platforms (e.g. web without a
-  // messaging service worker); don't let that keep the app from starting.
+  final auth = AuthService()..start();
+
+  // Draw the app first; notification and push setup are slow on some
+  // platforms (web registers a service worker) and must never hold the
+  // screen blank.
+  runApp(ForestFireApp(auth: auth, repository: NodeRepository()));
+  unawaited(_initNotifications());
+}
+
+Future<void> _initNotifications() async {
+  // Either can fail on some platforms (e.g. web without a messaging service
+  // worker); the app works without them.
   try {
     await NotificationService.initialize(
       onNotificationTap: FcmService.handleLocalNotificationTap,
@@ -57,10 +67,6 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('FCM unavailable: $e');
   }
-
-  final auth = AuthService()..start();
-
-  runApp(ForestFireApp(auth: auth, repository: NodeRepository()));
 }
 
 class ForestFireApp extends StatelessWidget {

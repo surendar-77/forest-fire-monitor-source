@@ -31,8 +31,42 @@
 
   <title>Forest Fire Monitor</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Shown until Flutter draws its first frame, instead of a blank page. -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #fff8f6; }
+    #splash {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #3b2a26; transition: opacity .3s;
+    }
+    #splash img { width: 72px; height: 72px; border-radius: 16px; }
+    #splash h1 { margin: 0; font-size: 20px; font-weight: 700; }
+    #splash p { margin: 0; font-size: 13px; color: #7a6560; }
+    #splash .spinner {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 3px solid #f3d5cf; border-top-color: #b3261e;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
+  <div id="splash">
+    <img src="icons/Icon-192.png" alt="">
+    <h1>Forest Fire Monitor</h1>
+    <div class="spinner"></div>
+    <p>Loading…</p>
+  </div>
+  <script>
+    window.addEventListener("flutter-first-frame", function () {
+      var splash = document.getElementById("splash");
+      if (!splash) return;
+      splash.style.opacity = "0";
+      setTimeout(function () { splash.remove(); }, 300);
+    });
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
