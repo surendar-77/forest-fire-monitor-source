@@ -19,8 +19,9 @@ export interface ThingSpeakFeed {
 }
 
 export interface SensorReading {
-  temperature: number;
-  humidity: number;
+  /** Null when the DHT22 gave no reading; smoke and AI data still count. */
+  temperature: number | null;
+  humidity: number | null;
   temperature2: number | null;
   humidity2: number | null;
   mq2_1: number;
@@ -52,8 +53,8 @@ export function parseFeed(
   const temperature = field(feed, 1);
   const humidity = field(feed, 2);
 
-  if (temperature == null || humidity == null) {
-    throw new Error("Primary sensor (temperature/humidity) reading is missing");
+  if (temperature == null && humidity == null && field(feed, 5) == null) {
+    throw new Error("Entry has no temperature, humidity or smoke reading");
   }
   if (!feed.created_at) {
     throw new Error("ThingSpeak timestamp is missing");
@@ -68,10 +69,10 @@ export function parseFeed(
   if (ageSeconds < -30) {
     throw new Error("ThingSpeak timestamp is unexpectedly in the future");
   }
-  if (humidity < 0 || humidity > 100) {
+  if (humidity != null && (humidity < 0 || humidity > 100)) {
     throw new Error(`Invalid primary humidity reading: ${humidity}`);
   }
-  if (temperature < -40 || temperature > 85) {
+  if (temperature != null && (temperature < -40 || temperature > 85)) {
     throw new Error(`Invalid primary temperature reading: ${temperature}`);
   }
 

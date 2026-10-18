@@ -20,8 +20,8 @@ AI_CLASSES = ("Fire", "Normal", "Smoke")
 
 @dataclass(frozen=True)
 class SensorReading:
-    temperature: float
-    humidity: float
+    temperature: float | None  # None when the DHT22 gave no reading
+    humidity: float | None
     temperature2: float | None
     humidity2: float | None
     mq2_1: float
@@ -50,8 +50,8 @@ def parse_feed(feed: dict, now: datetime, max_age_seconds: float) -> SensorReadi
     temperature = _field(feed, 1)
     humidity = _field(feed, 2)
 
-    if temperature is None or humidity is None:
-        raise ValueError("Primary sensor (temperature/humidity) reading is missing")
+    if temperature is None and humidity is None and _field(feed, 5) is None:
+        raise ValueError("Entry has no temperature, humidity or smoke reading")
 
     created = feed.get("created_at")
     if not created:
@@ -64,9 +64,9 @@ def parse_feed(feed: dict, now: datetime, max_age_seconds: float) -> SensorReadi
 
     if age_seconds < -30:
         raise ValueError("ThingSpeak timestamp is unexpectedly in the future")
-    if not 0 <= humidity <= 100:
+    if humidity is not None and not 0 <= humidity <= 100:
         raise ValueError(f"Invalid primary humidity reading: {humidity}")
-    if not -40 <= temperature <= 85:
+    if temperature is not None and not -40 <= temperature <= 85:
         raise ValueError(f"Invalid primary temperature reading: {temperature}")
 
     confidence = _field(feed, 8) or 0.0

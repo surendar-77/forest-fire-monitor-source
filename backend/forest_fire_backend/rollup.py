@@ -14,15 +14,21 @@ class HourBucket:
     hour: datetime
     count: int = 0
     temperature_sum: float = 0.0
+    temperature_count: int = 0
     humidity_sum: float = 0.0
+    humidity_count: int = 0
     smoke_max: float | None = None
     fire_probability_max: float | None = None
     risk_score_max: float | None = None
 
     def add(self, temperature, humidity, smoke, fire_probability, risk_score) -> None:
         self.count += 1
-        self.temperature_sum += temperature
-        self.humidity_sum += humidity
+        if temperature is not None:
+            self.temperature_sum += temperature
+            self.temperature_count += 1
+        if humidity is not None:
+            self.humidity_sum += humidity
+            self.humidity_count += 1
         self.smoke_max = smoke if self.smoke_max is None else max(self.smoke_max, smoke)
         self.fire_probability_max = (
             fire_probability
@@ -51,8 +57,8 @@ class HourlyAccumulator:
         node_id: str,
         time: datetime,
         *,
-        temperature: float,
-        humidity: float,
+        temperature: float | None,
+        humidity: float | None,
         smoke: float,
         fire_probability: float,
         risk_score: float,

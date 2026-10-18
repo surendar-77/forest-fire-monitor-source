@@ -224,8 +224,8 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
     await createAlertIfNew(ctx, channel.nodeId, decision.type, decision.severity, {
       fireProbability,
       smokeProbability,
-      temperature: reading.temperature,
-      humidity: reading.humidity,
+      temperature: reading.temperature ?? 0,
+      humidity: reading.humidity ?? 0,
       latitude: asNumber(device?.data.latitude),
       longitude: asNumber(device?.data.longitude),
       sensorReadings: {
@@ -457,15 +457,24 @@ async function hourlyRollup(ctx: Context): Promise<void> {
     });
     if (readings.length === 0) continue;
 
+    // Averages skip readings where the DHT22 gave nothing.
     let temperatureSum = 0;
+    let temperatureCount = 0;
     let humiditySum = 0;
+    let humidityCount = 0;
     let smokeMax = 0;
     let fireMax = 0;
     let riskMax = 0;
 
     for (const { data } of readings) {
-      temperatureSum += asNumber(data.temperature);
-      humiditySum += asNumber(data.humidity);
+      if (typeof data.temperature === "number") {
+        temperatureSum += data.temperature;
+        temperatureCount++;
+      }
+      if (typeof data.humidity === "number") {
+        humiditySum += data.humidity;
+        humidityCount++;
+      }
       smokeMax = Math.max(smokeMax, asNumber(data.mq2_1), asNumber(data.mq2_2));
       fireMax = Math.max(fireMax, asNumber(data.fireProbability));
       riskMax = Math.max(riskMax, asNumber(data.riskScore));
@@ -477,7 +486,9 @@ async function hourlyRollup(ctx: Context): Promise<void> {
         hour: start,
         count: readings.length,
         temperatureSum,
+        temperatureCount,
         humiditySum,
+        humidityCount,
         smokeMax,
         fireProbabilityMax: fireMax,
         riskScoreMax: riskMax,

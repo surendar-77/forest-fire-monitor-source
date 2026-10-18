@@ -69,9 +69,14 @@ class FeedTest(unittest.TestCase):
         r = parse_feed({**FEED, "created_at": "2026-10-18T11:55:00Z"}, NOW, 120)
         self.assertTrue(r.is_stale)
 
+    def test_silent_dht_still_parses(self):
+        r = parse_feed({**FEED, "field1": "", "field2": ""}, NOW, 120)
+        self.assertIsNone(r.temperature)
+        self.assertEqual(r.mq2_1, 420)
+
     def test_rejects_bad_readings(self):
         for bad in (
-            {"field1": ""},
+            {"field1": "", "field2": "", "field5": ""},
             {"field2": "140"},
             {"field1": "99"},
             {"created_at": "2026-10-18T12:05:00Z"},

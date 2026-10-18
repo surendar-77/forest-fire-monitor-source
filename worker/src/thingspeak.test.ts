@@ -42,8 +42,18 @@ test("old entries are stale", () => {
   assert.equal(reading.isStale, true);
 });
 
-test("rejects missing or out-of-range primary readings", () => {
-  assert.throws(() => parseFeed({ ...feed, field1: "" }, now, 120), /missing/);
+test("a silent DHT22 still lets smoke and AI data through", () => {
+  const reading = parseFeed({ ...feed, field1: "", field2: "" }, now, 120);
+  assert.equal(reading.temperature, null);
+  assert.equal(reading.humidity, null);
+  assert.equal(reading.mq2_1, 420);
+});
+
+test("rejects empty or out-of-range readings", () => {
+  assert.throws(
+    () => parseFeed({ ...feed, field1: "", field2: "", field5: "" }, now, 120),
+    /no temperature, humidity or smoke/,
+  );
   assert.throws(() => parseFeed({ ...feed, field2: "140" }, now, 120), /humidity/);
   assert.throws(() => parseFeed({ ...feed, field1: "99" }, now, 120), /temperature/);
   assert.throws(

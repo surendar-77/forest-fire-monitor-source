@@ -38,15 +38,18 @@ class ReadingModel {
   factory ReadingModel.fromHourly(Map<String, dynamic> data) {
     final count = parseDouble(data['count'], 0);
 
-    double? average(String field) {
-      final sum = parseDoubleOrNull(data[field]);
-      return sum == null || count == 0 ? null : sum / count;
+    // Newer rollups count each sensor separately, so readings where the
+    // DHT22 gave nothing don't drag the average down.
+    double? average(String sumField, String countField) {
+      final sum = parseDoubleOrNull(data[sumField]);
+      final n = parseDouble(data[countField], count);
+      return sum == null || n == 0 ? null : sum / n;
     }
 
     return ReadingModel(
       time: parseDateTime(data['hour']),
-      temperature: average('temperatureSum'),
-      humidity: average('humiditySum'),
+      temperature: average('temperatureSum', 'temperatureCount'),
+      humidity: average('humiditySum', 'humidityCount'),
       smoke: parseDoubleOrNull(data['smokeMax']),
       fireProbability: parseDoubleOrNull(data['fireProbabilityMax']),
       riskScore: parseDoubleOrNull(data['riskScoreMax']),

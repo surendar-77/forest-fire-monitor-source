@@ -197,7 +197,11 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
       children: [
         Text('Risk', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
         Text(
-          score == null ? '--' : '$score $level',
+          level == 'WARMUP'
+              ? 'Sensors warming up'
+              : score == null
+              ? '--'
+              : '$score $level',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
