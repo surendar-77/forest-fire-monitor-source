@@ -56,6 +56,18 @@ class FireDangerCard extends StatelessWidget {
               )
             else
               ..._dangerBody(danger),
+            if (danger?.spread != null) ...[
+              const Divider(height: 22),
+              _spreadSection(danger!.spread!),
+            ],
+            if (node.airQuality != null) ...[
+              const Divider(height: 22),
+              _airSection(node.airQuality!),
+            ],
+            if (node.hotspots.isNotEmpty) ...[
+              const Divider(height: 22),
+              _satelliteSection(node.hotspots),
+            ],
           ],
         ),
       ),
@@ -255,6 +267,92 @@ class FireDangerCard extends StatelessWidget {
         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
     ];
+  }
+
+  String _distance(int metres) =>
+      metres >= 1000 ? '${(metres / 1000).toStringAsFixed(1)} km' : '$metres m';
+
+  Widget _spreadSection(FireSpread s) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Transform.rotate(
+          angle: s.towardDeg * 3.14159265 / 180,
+          child: const Icon(Icons.navigation, color: Colors.deepOrange, size: 28),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'IF A FIRE STARTED NOW',
+                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Spreads toward ${s.towardCompass} at ~${s.headRos.toStringAsFixed(1)} m/min: '
+                'about ${_distance(s.headDistance1h)} in the first hour '
+                '(wind ${s.windKmh.toStringAsFixed(0)} km/h).',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Indicative estimate, Canadian FBP System, fuel ${s.fuelModel}: ${s.note}. '
+                'No slope data.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _airSection(AirQuality air) {
+    final aqi = air.usAqi;
+    final color = aqi == null
+        ? Colors.grey
+        : aqi <= 50
+        ? Colors.green
+        : aqi <= 100
+        ? Colors.amber.shade800
+        : aqi <= 150
+        ? Colors.orange
+        : Colors.red;
+
+    return Row(
+      children: [
+        Icon(Icons.air, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Air quality: ${aqi?.round() ?? '--'} AQI · ${air.category}'
+            '${air.pm25 == null ? '' : ' · PM2.5 ${air.pm25!.toStringAsFixed(0)} µg/m³'}',
+            style: TextStyle(fontWeight: FontWeight.w600, color: color),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _satelliteSection(List<SatelliteHotspot> hotspots) {
+    final nearest = hotspots.first;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.satellite_alt, color: Colors.red),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '${hotspots.length} satellite fire detection${hotspots.length == 1 ? '' : 's'} '
+            'nearby in the last 24 h · nearest ${nearest.distanceKm.toStringAsFixed(1)} km '
+            '(${nearest.confidence} confidence, ${nearest.acquired} UTC, NASA VIIRS)',
+            style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.red),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _fact(String label, double? value, String unit, int digits) {

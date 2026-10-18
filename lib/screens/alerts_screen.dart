@@ -63,20 +63,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   Future<void> _resolve(AlertModel alert) async {
-    final notes = await showDialog<String>(
+    final result = await showDialog<(String, String)>(
       context: context,
       builder: (context) => const _ResolveDialog(),
     );
 
-    if (notes == null) {
+    if (result == null) {
       return;
     }
+    final (outcome, notes) = result;
 
     await _runAction(() async {
       final repository = widget.repository;
 
       if (repository != null) {
-        await repository.resolveIncident(alert.id, notes: notes);
+        await repository.resolveIncident(alert.id, notes: notes, outcome: outcome);
       } else {
         await simulationService.resolveIncident(alert.id);
       }
@@ -157,6 +158,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
             children: [
               _summaryCard(activeCount: activeAlerts.length),
+
+              if (history.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _outcomeStats(history),
+              ],
 
               const SizedBox(height: 14),
 
@@ -243,6 +249,53 @@ class _AlertsScreenState extends State<AlertsScreen> {
           ),
         );
       },
+    );
+  }
+
+  // ==================================================
+  // OUTCOME STATS (false-alarm rate)
+  // ==================================================
+
+  Widget _outcomeStats(List<AlertModel> resolved) {
+    final recorded = resolved.where((a) => a.outcome != null).toList();
+    final counts = {
+      for (final o in AlertOutcome.all) o: recorded.where((a) => a.outcome == o).length,
+    };
+    final falseAlarms = counts[AlertOutcome.falseAlarm] ?? 0;
+    final rate = recorded.isEmpty ? null : (falseAlarms * 100 / recorded.length).round();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              rate == null
+                  ? 'No outcomes recorded yet'
+                  : 'False-alarm rate: $rate% of ${recorded.length} recorded',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                for (final o in AlertOutcome.all)
+                  Text(
+                    '${AlertOutcome.label(o)}: ${counts[o]}',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                  ),
+                if (resolved.length > recorded.length)
+                  Text(
+                    'Not recorded: ${resolved.length - recorded.length}',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -645,6 +698,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     '${_formatDateTime(alert.resolvedAt!)}'
                         '${alert.resolvedBy == null ? '' : '\nby ${alert.resolvedBy}'}',
                   ),
+                if (alert.outcome != null)
+                  _dialogRow('Outcome', AlertOutcome.label(alert.outcome)),
                 if (alert.notes != null) _dialogRow('Notes', alert.notes!),
                 _dialogRow('Status', alert.status),
               ],
@@ -826,6 +881,7 @@ class _ResolveDialog extends StatefulWidget {
 
 class _ResolveDialogState extends State<_ResolveDialog> {
   final _notesController = TextEditingController();
+  String? _outcome;
 
   @override
   void dispose() {
@@ -837,13 +893,45 @@ class _ResolveDialogState extends State<_ResolveDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Resolve incident'),
-      content: TextField(
-        controller: _notesController,
-        maxLines: 4,
-        decoration: const InputDecoration(
-          labelText: 'Field notes (optional)',
-          hintText: 'What was found, action taken, area affected...',
-          border: OutlineInputBorder(),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'What was it?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Recorded outcomes measure false alarms and train the '
+              'detection model.',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final outcome in AlertOutcome.all)
+                  ChoiceChip(
+                    label: Text(AlertOutcome.label(outcome)),
+                    selected: _outcome == outcome,
+                    onSelected: (_) => setState(() => _outcome = outcome),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _notesController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Field notes (optional)',
+                hintText: 'What was found, action taken, area affected...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
         ),
       ),
       actions: [
@@ -852,7 +940,9 @@ class _ResolveDialogState extends State<_ResolveDialog> {
           child: const Text('CANCEL'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _notesController.text),
+          onPressed: _outcome == null
+              ? null
+              : () => Navigator.pop(context, (_outcome!, _notesController.text)),
           child: const Text('RESOLVE'),
         ),
       ],

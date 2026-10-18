@@ -12,6 +12,8 @@ export interface HourlyWeather {
   temperature_2m: (number | null)[];
   relative_humidity_2m: (number | null)[];
   wind_speed_10m: (number | null)[];
+  /** Direction the wind blows from, degrees (meteorological). */
+  wind_direction_10m?: (number | null)[];
   precipitation: (number | null)[];
 }
 
@@ -43,7 +45,7 @@ export async function fetchHourlyWeather(
   url.searchParams.set("longitude", longitude.toFixed(4));
   url.searchParams.set(
     "hourly",
-    "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation",
+    "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation",
   );
   url.searchParams.set("wind_speed_unit", "kmh");
   url.searchParams.set("past_days", "14");
@@ -73,6 +75,22 @@ function at(w: HourlyWeather, i: number): NoonWeather | null {
   const wind = w.wind_speed_10m[i];
   if (temp == null || rh == null || wind == null) return null;
   return { temp, rh, wind, rain24h: rainBefore(w, i) };
+}
+
+/** Weather in the current hour, with wind direction (for fire spread). */
+export function currentConditions(
+  w: HourlyWeather,
+  nowLocal: string,
+): (NoonWeather & { windFromDeg: number; time: string }) | null {
+  let index = -1;
+  for (let i = 0; i < w.time.length; i++) {
+    if (w.time[i].slice(0, 13) > nowLocal) break;
+    if (w.temperature_2m[i] != null) index = i;
+  }
+  if (index < 0) return null;
+  const weather = at(w, index);
+  if (!weather) return null;
+  return { ...weather, windFromDeg: w.wind_direction_10m?.[index] ?? 0, time: w.time[index] };
 }
 
 export interface HourWeather {

@@ -6,6 +6,32 @@ class AlertStatus {
   static const String resolved = 'RESOLVED';
 }
 
+/// What a resolved alert turned out to be. Recorded by the officer; the
+/// false-alarm rate and these labels feed model training (stage 3).
+class AlertOutcome {
+  static const String confirmedFire = 'CONFIRMED_FIRE';
+  static const String falseAlarm = 'FALSE_ALARM';
+  static const String controlledBurn = 'CONTROLLED_BURN';
+  static const String test = 'TEST';
+
+  static const all = [confirmedFire, falseAlarm, controlledBurn, test];
+
+  static String label(String? outcome) {
+    switch (outcome) {
+      case confirmedFire:
+        return 'Confirmed fire';
+      case falseAlarm:
+        return 'False alarm';
+      case controlledBurn:
+        return 'Controlled burn';
+      case test:
+        return 'Test / drill';
+      default:
+        return 'Not recorded';
+    }
+  }
+}
+
 class AlertModel {
   final String id;
   final String deviceId;
@@ -30,6 +56,7 @@ class AlertModel {
   final String? resolvedBy;
   final DateTime? resolvedAt;
   final String? notes;
+  final String? outcome;
 
   const AlertModel({
     required this.id,
@@ -49,6 +76,7 @@ class AlertModel {
     this.resolvedBy,
     this.resolvedAt,
     this.notes,
+    this.outcome,
   });
 
   bool get isOpen =>
@@ -61,6 +89,7 @@ class AlertModel {
     String? resolvedBy,
     DateTime? resolvedAt,
     String? notes,
+    String? outcome,
     double? latitude,
     double? longitude,
   }) {
@@ -82,6 +111,7 @@ class AlertModel {
       resolvedBy: resolvedBy ?? this.resolvedBy,
       resolvedAt: resolvedAt ?? this.resolvedAt,
       notes: notes ?? this.notes,
+      outcome: outcome ?? this.outcome,
     );
   }
 
@@ -122,6 +152,7 @@ class AlertModel {
       ),
       resolvedAt: parseDateTimeOrNull(data['resolvedAt']),
       notes: parseStringOrNull(data['notes']),
+      outcome: parseStringOrNull(data['outcome']),
     );
   }
 
@@ -148,6 +179,7 @@ class AlertModel {
       'resolvedBy': resolvedBy,
       'resolvedAt': resolvedAt?.toIso8601String(),
       'notes': notes,
+      'outcome': outcome,
     };
   }
 
@@ -170,6 +202,7 @@ class AlertModel {
       resolvedBy: json['resolvedBy'] as String?,
       resolvedAt: parseDateTimeOrNull(json['resolvedAt']),
       notes: json['notes'] as String?,
+      outcome: json['outcome'] as String?,
     );
   }
 }

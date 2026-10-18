@@ -248,7 +248,7 @@ class NodeRepository extends ChangeNotifier {
     });
   }
 
-  Future<void> resolveIncident(String alertId, {String? notes}) async {
+  Future<void> resolveIncident(String alertId, {String? notes, String? outcome}) async {
     final user = _auth.currentUser;
 
     await _firestore.collection('alerts').doc(alertId).update({
@@ -257,6 +257,7 @@ class NodeRepository extends ChangeNotifier {
       'resolvedByName': user?.displayName ?? user?.email,
       'resolvedAt': FieldValue.serverTimestamp(),
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      'outcome': ?outcome,
     });
   }
 

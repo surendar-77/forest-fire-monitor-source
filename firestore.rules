@@ -87,7 +87,9 @@ service cloud.firestore {
       function resolving() {
         return resource.data.status == 'ACKNOWLEDGED'
           && request.resource.data.status == 'RESOLVED'
-          && changedKeys().hasOnly(['status', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'notes'])
+          && changedKeys().hasOnly(['status', 'resolvedBy', 'resolvedByName', 'resolvedAt', 'notes', 'outcome'])
+          && (!('outcome' in request.resource.data)
+              || request.resource.data.outcome in ['CONFIRMED_FIRE', 'FALSE_ALARM', 'CONTROLLED_BURN', 'TEST'])
           && request.resource.data.resolvedBy == request.auth.uid
           && request.resource.data.resolvedAt == request.time
           && (!('notes' in request.resource.data)

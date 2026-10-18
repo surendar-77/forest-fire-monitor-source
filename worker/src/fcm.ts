@@ -40,7 +40,9 @@ function title(alert: Alert, escalation: number): string {
           ? "Smoke detected"
           : alert.type === "SENSOR_ANOMALY"
             ? "Smoke/heat anomaly"
-            : "High fire risk";
+            : alert.type === "SATELLITE_HOTSPOT"
+              ? "Satellite fire detection"
+              : "High fire risk";
   return `${prefix}${alert.severity ?? "HIGH"} · ${kind} at ${alert.deviceId ?? "?"}`;
 }
 

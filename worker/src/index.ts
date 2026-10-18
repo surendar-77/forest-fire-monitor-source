@@ -26,7 +26,10 @@ import {
 import { parseDeviceAlert, safeEqual } from "./deviceAlert.js";
 import { dangerLevel, fireDangerModel, fireDangerProbability } from "./fireDanger.js";
 import { ffmc, ffmcAfter, isi } from "./fwi.js";
-import { dangerInputs, fetchHourlyWeather, upcomingHours } from "./weather.js";
+import { currentConditions, dangerInputs, fetchHourlyWeather, upcomingHours } from "./weather.js";
+import { fetchAirQuality } from "./airQuality.js";
+import { fetchHotspots } from "./firms.js";
+import { compass, estimateSpread } from "./spread.js";
 import { adjustProbability, combineRisk, riskLevel as riskLevel3, terrainFor, type Terrain } from "./terrain.js";
 import { pushAlert } from "./fcm.js";
 import { alertMessage, notifyStations, parseFireServices, stationsFor } from "./fireServices.js";
@@ -43,6 +46,10 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   /** Opted-in phones within this distance of a node get its serious alerts. */
   NEARBY_RADIUS_KM?: string;
+  /** NASA FIRMS key for satellite fire detections (optional). */
+  FIRMS_MAP_KEY?: string;
+  /** Satellite detections within this distance of a node are shown. */
+  SATELLITE_RADIUS_KM?: string;
 }
 
 const VERSION = "worker-1.0.0";
@@ -687,6 +694,17 @@ async function nodeFireDanger(
     null,
   );
 
+  // If a fire started now: rate and direction of spread for this terrain.
+  const current = currentConditions(weather.hourly, weather.nowLocal);
+  const spread = current
+    ? estimateSpread(
+        terrain.id,
+        ffmc(current.temp, current.rh, current.wind, current.rain24h, ffmcYesterday),
+        current.wind,
+        current.windFromDeg,
+      )
+    : null;
+
   return {
     probability: round(probability, 3),
     baseProbability: round(baseProbability, 3),
@@ -696,6 +714,7 @@ async function nodeFireDanger(
     terrainFactor: terrain.factor,
     timeline: timeline as unknown as Plain[],
     peak: peak as unknown as Plain,
+    spread: spread ? ({ ...spread, towardCompass: compass(spread.towardDeg) } as unknown as Plain) : null,
     ffmc: round(ffmcToday, 1),
     isi: round(isiToday, 2),
     temperature: round(temp, 1),
@@ -709,24 +728,72 @@ async function nodeFireDanger(
   };
 }
 
+/** Satellite detections this close to a node raise an alert. */
+const SATELLITE_ALERT_KM = 5;
+
 async function fireDangerJob(ctx: Context, devices: Doc[]): Promise<void> {
   const writes: Write[] = [];
+  const mapKey = ctx.env.FIRMS_MAP_KEY;
+  const satelliteRadius = Number(ctx.env.SATELLITE_RADIUS_KM ?? "25");
 
   await Promise.all(
     devices.map(async (device) => {
       const lat = device.data.latitude;
       const lng = device.data.longitude;
       if (typeof lat !== "number" || typeof lng !== "number" || (lat === 0 && lng === 0)) return;
+      const update: Record<string, Plain> = {};
 
-      try {
-        writes.push({
-          set: device.path,
-          merge: true,
-          data: { danger: await nodeFireDanger(lat, lng, terrainFor(device.data.terrain)) },
-        });
-      } catch (error) {
-        console.error(`fire danger ${device.id}:`, error instanceof Error ? error.message : error);
+      const [danger, air, hotspots] = await Promise.allSettled([
+        nodeFireDanger(lat, lng, terrainFor(device.data.terrain)),
+        fetchAirQuality(lat, lng),
+        mapKey ? fetchHotspots(mapKey, lat, lng, satelliteRadius) : Promise.resolve(null),
+      ]);
+
+      if (danger.status === "fulfilled") update.danger = danger.value;
+      else console.error(`fire danger ${device.id}:`, String(danger.reason));
+
+      if (air.status === "fulfilled") {
+        update.airQuality = { ...air.value, updatedAt: new Date() } as unknown as Plain;
+      } else {
+        console.warn(`air quality ${device.id}:`, String(air.reason));
       }
+
+      if (hotspots.status === "fulfilled" && hotspots.value) {
+        const list = hotspots.value;
+        update.satellite = {
+          count: list.length,
+          nearestKm: list[0]?.distanceKm ?? null,
+          radiusKm: satelliteRadius,
+          hotspots: list.slice(0, 20) as unknown as Plain[],
+          checkedAt: new Date(),
+        };
+
+        const close = list.find((h) => h.distanceKm <= SATELLITE_ALERT_KM && h.confidence !== "low");
+        if (close) {
+          const dangerLevel = danger.status === "fulfilled" ? danger.value.level : null;
+          await run(`satellite alert ${device.id}`, () =>
+            createAlertIfNew(ctx, device.id, "SATELLITE_HOTSPOT", dangerLevel === "HIGH" ? "CRITICAL" : "HIGH", {
+              fireProbability: 0,
+              smokeProbability: 0,
+              temperature: asNumber(device.data.temperature),
+              humidity: asNumber(device.data.humidity),
+              latitude: close.latitude,
+              longitude: close.longitude,
+              sensorReadings: {
+                satellite: close.satellite,
+                acquired: close.acquired,
+                confidence: close.confidence,
+                frp: close.frp,
+                distanceKm: close.distanceKm,
+              },
+            }),
+          );
+        }
+      } else if (hotspots.status === "rejected") {
+        console.warn(`satellite ${device.id}:`, String(hotspots.reason));
+      }
+
+      if (Object.keys(update).length > 0) writes.push({ set: device.path, merge: true, data: update });
     }),
   );
 

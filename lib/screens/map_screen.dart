@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -402,6 +404,47 @@ class _MapScreenState extends State<MapScreen> {
                   ),
 
                 // ------------------------------------------
+                // FIRE SPREAD (1 h, if ignited now) for the selected node
+                // ------------------------------------------
+                if (_selectedNode?.danger?.spread != null)
+                  PolygonLayer(
+                    polygons: [
+                      Polygon(
+                        points: _spreadEllipse(
+                          _selectedNode!.latitude,
+                          _selectedNode!.longitude,
+                          _selectedNode!.danger!.spread!,
+                        ),
+                        color: Colors.deepOrange.withValues(alpha: 0.18),
+                        borderColor: Colors.deepOrange,
+                        borderStrokeWidth: 2,
+                      ),
+                    ],
+                  ),
+
+                // ------------------------------------------
+                // SATELLITE FIRE DETECTIONS (NASA VIIRS)
+                // ------------------------------------------
+                if (repository != null)
+                  MarkerLayer(
+                    markers: [
+                      for (final node in repository.nodes)
+                        for (final h in node.hotspots)
+                          Marker(
+                            point: LatLng(h.latitude, h.longitude),
+                            width: 30,
+                            height: 30,
+                            child: Tooltip(
+                              message:
+                                  'Satellite fire detection\n${h.acquired} UTC · ${h.confidence} confidence'
+                                  '${h.frp == null ? '' : ' · ${h.frp!.toStringAsFixed(1)} MW'}',
+                              child: const Icon(Icons.whatshot, color: Colors.red, size: 28),
+                            ),
+                          ),
+                    ],
+                  ),
+
+                // ------------------------------------------
                 // MARKERS
                 // ------------------------------------------
                 MarkerLayer(
@@ -560,6 +603,36 @@ class _MapScreenState extends State<MapScreen> {
       },
     );
   }
+  // ==================================================
+  // FIRE SPREAD ELLIPSE
+  // ==================================================
+
+  /// One-hour spread ellipse: ignition at the node, head running downwind
+  /// (FBP elliptical spread: head + back distance along the wind, width
+  /// from the length-to-breadth ratio).
+  List<LatLng> _spreadEllipse(double lat, double lng, FireSpread s) {
+    final head = s.headDistance1h.toDouble();
+    final back = s.backDistance1h.toDouble();
+    final semiMajor = math.max((head + back) / 2, 15.0);
+    final semiMinor = math.max(semiMajor / math.max(s.lengthToBreadth, 1), 10.0);
+    final centreOffset = (head - back) / 2;
+    final theta = s.towardDeg * math.pi / 180;
+    const metresPerDegree = 111320.0;
+    final lngScale = metresPerDegree * math.cos(lat * math.pi / 180);
+
+    return [
+      for (var i = 0; i <= 48; i++)
+        () {
+          final t = 2 * math.pi * i / 48;
+          final along = centreOffset + semiMajor * math.cos(t);
+          final across = semiMinor * math.sin(t);
+          final north = along * math.cos(theta) - across * math.sin(theta);
+          final east = along * math.sin(theta) + across * math.cos(theta);
+          return LatLng(lat + north / metresPerDegree, lng + east / lngScale);
+        }(),
+    ];
+  }
+
   // ==================================================
   // MONITORING NODE MARKER
   // ==================================================

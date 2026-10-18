@@ -5,6 +5,7 @@ import '../widgets/monitoring_node_card.dart';
 import '../widgets/fire_danger_card.dart';
 import '../widgets/live_feed_card.dart';
 import '../widgets/node_selector.dart';
+import '../widgets/overview_strip.dart';
 import '../widgets/node_status_chip.dart';
 import '../widgets/risk_card.dart';
 import '../widgets/sensor_card.dart';
@@ -156,6 +157,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (widget.controller.isLive) ...[
+                OverviewStrip(repository: widget.controller.repository),
+
+                const SizedBox(height: 12),
+
                 NodeSelector(
                   nodes: widget.controller.repository.nodes,
                   selectedNodeId: widget.controller.selectedNodeId,

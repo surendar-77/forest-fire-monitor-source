@@ -25,6 +25,9 @@ class FireDanger {
   final List<DangerHour> timeline;
   final DangerHour? peak;
 
+  /// If a fire started now: how fast and which way (FBP estimate).
+  final FireSpread? spread;
+
   const FireDanger({
     required this.probability,
     required this.level,
@@ -42,6 +45,7 @@ class FireDanger {
     this.baseProbability,
     this.timeline = const [],
     this.peak,
+    this.spread,
   });
 
   static FireDanger? fromMap(dynamic value) {
@@ -68,6 +72,104 @@ class FireDanger {
           ? (value['timeline'] as List).map(DangerHour.fromMap).whereType<DangerHour>().toList()
           : const [],
       peak: DangerHour.fromMap(value['peak']),
+      spread: FireSpread.fromMap(value['spread']),
+    );
+  }
+}
+
+class FireSpread {
+  final double headRos; // m/min
+  final double backRos;
+  final double lengthToBreadth;
+  final double towardDeg;
+  final String towardCompass;
+  final int headDistance1h; // m
+  final int backDistance1h;
+  final double windKmh;
+  final String fuelModel;
+  final String note;
+
+  const FireSpread({
+    required this.headRos,
+    required this.backRos,
+    required this.lengthToBreadth,
+    required this.towardDeg,
+    required this.towardCompass,
+    required this.headDistance1h,
+    required this.backDistance1h,
+    required this.windKmh,
+    required this.fuelModel,
+    required this.note,
+  });
+
+  static FireSpread? fromMap(dynamic value) {
+    if (value is! Map) return null;
+    final head = parseDoubleOrNull(value['headRos']);
+    if (head == null) return null;
+    return FireSpread(
+      headRos: head,
+      backRos: parseDouble(value['backRos'], 0),
+      lengthToBreadth: parseDouble(value['lengthToBreadth'], 1),
+      towardDeg: parseDouble(value['towardDeg'], 0),
+      towardCompass: parseString(value['towardCompass'], ''),
+      headDistance1h: parseInt(value['headDistance1h'], 0),
+      backDistance1h: parseInt(value['backDistance1h'], 0),
+      windKmh: parseDouble(value['windKmh'], 0),
+      fuelModel: parseString(value['fuelModel'], ''),
+      note: parseString(value['note'], ''),
+    );
+  }
+}
+
+class AirQuality {
+  final double? pm25;
+  final double? pm10;
+  final double? usAqi;
+  final String category;
+
+  const AirQuality({this.pm25, this.pm10, this.usAqi, required this.category});
+
+  static AirQuality? fromMap(dynamic value) {
+    if (value is! Map) return null;
+    return AirQuality(
+      pm25: parseDoubleOrNull(value['pm25']),
+      pm10: parseDoubleOrNull(value['pm10']),
+      usAqi: parseDoubleOrNull(value['usAqi']),
+      category: parseString(value['category'], 'Unknown'),
+    );
+  }
+}
+
+/// A NASA FIRMS (VIIRS) satellite fire detection near a node.
+class SatelliteHotspot {
+  final double latitude;
+  final double longitude;
+  final String acquired;
+  final String confidence;
+  final double? frp;
+  final double distanceKm;
+
+  const SatelliteHotspot({
+    required this.latitude,
+    required this.longitude,
+    required this.acquired,
+    required this.confidence,
+    required this.distanceKm,
+    this.frp,
+  });
+
+  static SatelliteHotspot? fromMap(dynamic value) {
+    if (value is! Map) return null;
+    final lat = parseDoubleOrNull(value['latitude']);
+    final lng = parseDoubleOrNull(value['longitude']);
+    if (lat == null || lng == null) return null;
+    return SatelliteHotspot(
+      latitude: lat,
+      longitude: lng,
+      acquired: parseString(value['acquired'], ''),
+      confidence: parseString(value['confidence'], 'nominal'),
+      frp: parseDoubleOrNull(value['frp']),
+      distanceKm: parseDouble(value['distanceKm'], 0),
     );
   }
 }
@@ -118,6 +220,11 @@ class NodeModel {
   /// Terrain / fuel type id (see Terrain), set by an administrator.
   final String? terrain;
 
+  final AirQuality? airQuality;
+
+  /// Satellite fire detections within the backend's radius (last 24 h).
+  final List<SatelliteHotspot> hotspots;
+
   const NodeModel({
     required this.id,
     required this.name,
@@ -130,6 +237,8 @@ class NodeModel {
     this.anomalyLevel,
     this.anomalyDriver,
     this.terrain,
+    this.airQuality,
+    this.hotspots = const [],
   });
 
   double get latitude => detection.latitude;
@@ -202,6 +311,13 @@ class NodeModel {
           ? parseStringOrNull((data['anomaly'] as Map)['driver'])
           : null,
       terrain: parseStringOrNull(data['terrain']),
+      airQuality: AirQuality.fromMap(data['airQuality']),
+      hotspots: data['satellite'] is Map && (data['satellite'] as Map)['hotspots'] is List
+          ? ((data['satellite'] as Map)['hotspots'] as List)
+                .map(SatelliteHotspot.fromMap)
+                .whereType<SatelliteHotspot>()
+                .toList()
+          : const [],
     );
   }
 }
