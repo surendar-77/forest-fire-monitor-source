@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/node_model.dart';
 import '../widgets/monitoring_node_card.dart';
+import '../widgets/live_feed_card.dart';
 import '../widgets/node_selector.dart';
 import '../widgets/node_status_chip.dart';
 import '../widgets/risk_card.dart';
@@ -166,6 +167,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
 
               if (node != null) ...[
+                const SizedBox(height: 8),
+                LiveFeedCard(nodeId: node.id),
                 const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,

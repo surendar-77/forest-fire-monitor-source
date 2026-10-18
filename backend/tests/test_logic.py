@@ -59,6 +59,7 @@ class FeedTest(unittest.TestCase):
         self.assertEqual(r.temperature, 31.5)
         self.assertEqual(r.humidity2, None)
         self.assertEqual(r.mq2_2, 0.0)
+        self.assertEqual(r.ai_class, "Fire")  # field7 "0" is the Fire class
         self.assertAlmostEqual(r.ai_confidence, 0.87)
         self.assertEqual(r.entry_id, 941)
         self.assertEqual(r.age_seconds, 30)
@@ -80,14 +81,24 @@ class FeedTest(unittest.TestCase):
 
 
 class AlertRulesTest(unittest.TestCase):
+    def test_confident_normal_raises_nothing(self):
+        r = parse_feed({**FEED, "field7": "1", "field8": "0.95"}, NOW, 120)
+        self.assertEqual(r.ai_class, "Normal")
+        self.assertIsNone(decide_alert(r, "LOW"))
+
+    def test_smoke_class(self):
+        r = parse_feed({**FEED, "field7": "2", "field8": "81"}, NOW, 120)
+        self.assertEqual((decide_alert(r, "LOW").type, decide_alert(r, "LOW").severity), ("SMOKE", "MODERATE"))
+        self.assertEqual(decide_alert(r, "CRITICAL").severity, "HIGH")
+
     def test_ai_detection(self):
-        r = parse_feed({**FEED, "field7": "1", "field8": "0.9"}, NOW, 120)
+        r = parse_feed({**FEED, "field7": "0", "field8": "0.9"}, NOW, 120)
         self.assertEqual(decide_alert(r, "LOW").severity, "HIGH")
         self.assertEqual(decide_alert(r, "HIGH").severity, "CRITICAL")
         self.assertEqual(decide_alert(r, "HIGH").type, "FIRE")
 
     def test_environmental_risk(self):
-        r = parse_feed({**FEED, "field7": "1", "field8": "30"}, NOW, 120)
+        r = parse_feed({**FEED, "field7": "0", "field8": "30"}, NOW, 120)
         self.assertIsNone(decide_alert(r, "LOW"))
         self.assertEqual(decide_alert(r, "CRITICAL").severity, "HIGH")
         self.assertEqual(decide_alert(r, "HIGH").severity, "MODERATE")

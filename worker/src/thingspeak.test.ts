@@ -28,7 +28,9 @@ test("parses fields, blanks and percent confidence", () => {
   assert.equal(reading.humidity2, null);
   assert.equal(reading.mq2_1, 420);
   assert.equal(reading.mq2_2, 0);
-  assert.equal(reading.fireDetected, false);
+  // field7 "0" is the Fire class
+  assert.equal(reading.aiClass, "Fire");
+  assert.equal(reading.fireDetected, true);
   assert.equal(reading.aiConfidence, 0.87);
   assert.equal(reading.entryId, 941);
   assert.equal(reading.ageSeconds, 30);
@@ -50,15 +52,30 @@ test("rejects missing or out-of-range primary readings", () => {
   );
 });
 
-test("on-device AI fire detection raises a FIRE alert", () => {
-  const reading = parseFeed({ ...feed, field7: "1", field8: "0.9" }, now, 120);
+test("a confident Normal frame raises nothing", () => {
+  const reading = parseFeed({ ...feed, field7: "1", field8: "0.95" }, now, 120);
+
+  assert.equal(reading.aiClass, "Normal");
+  assert.equal(reading.fireDetected, false);
+  assert.equal(decideAlert(reading, "LOW"), null);
+});
+
+test("camera Smoke class raises a SMOKE alert", () => {
+  const reading = parseFeed({ ...feed, field7: "2", field8: "81" }, now, 120);
+
+  assert.deepEqual(decideAlert(reading, "LOW"), { type: "SMOKE", severity: "MODERATE" });
+  assert.deepEqual(decideAlert(reading, "CRITICAL"), { type: "SMOKE", severity: "HIGH" });
+});
+
+test("camera Fire class raises a FIRE alert", () => {
+  const reading = parseFeed({ ...feed, field7: "0", field8: "0.9" }, now, 120);
 
   assert.deepEqual(decideAlert(reading, "LOW"), { type: "FIRE", severity: "HIGH" });
   assert.deepEqual(decideAlert(reading, "HIGH"), { type: "FIRE", severity: "CRITICAL" });
 });
 
 test("low-confidence AI detection falls back to environmental risk", () => {
-  const reading = parseFeed({ ...feed, field7: "1", field8: "30" }, now, 120);
+  const reading = parseFeed({ ...feed, field7: "0", field8: "30" }, now, 120);
 
   assert.equal(decideAlert(reading, "LOW"), null);
   assert.deepEqual(decideAlert(reading, "CRITICAL"), {

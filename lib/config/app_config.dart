@@ -38,6 +38,14 @@ class AppConfig {
     'ROUTING_API_KEY',
   );
 
+  /// Realtime Database that nodes write their per-second readings to
+  /// (`live/{nodeId}/values`). Must match RTDB_URL in the node firmware.
+  static const String realtimeDatabaseUrl = String.fromEnvironment(
+    'REALTIME_DB_URL',
+    defaultValue:
+        'https://forest-fire-monitor-55cf4-default-rtdb.asia-southeast1.firebasedatabase.app',
+  );
+
   /// Identifies the app to tile servers, as their usage policies require.
   static const String userAgentPackageName = 'com.forestfire.monitor';
 }

@@ -4,8 +4,13 @@
  *   1 Temperature 1 (°C)   2 Humidity 1 (%)
  *   3 Temperature 2 (°C)   4 Humidity 2 (%)
  *   5 MQ-2 sensor 1        6 MQ-2 sensor 2
- *   7 Fire detected (0/1)  8 AI confidence (0-1 or 0-100)
+ *   7 AI class: 0 Fire, 1 Normal, 2 Smoke (as ForestFire_S3.ino sends it)
+ *   8 AI confidence of that class (0-1 or 0-100)
  */
+
+export type AiClass = "Fire" | "Normal" | "Smoke";
+
+const AI_CLASSES: AiClass[] = ["Fire", "Normal", "Smoke"];
 
 export interface ThingSpeakFeed {
   created_at?: string;
@@ -20,8 +25,11 @@ export interface SensorReading {
   humidity2: number | null;
   mq2_1: number;
   mq2_2: number;
+  /** The camera model's latest prediction, or null before the first one. */
+  aiClass: AiClass | null;
   fireDetected: boolean;
-  /** 0-1 */
+  smokeDetected: boolean;
+  /** Confidence of aiClass, 0-1 */
   aiConfidence: number;
   timestamp: Date;
   entryId: number | null;
@@ -70,6 +78,10 @@ export function parseFeed(
   let confidence = field(feed, 8) ?? 0;
   if (confidence > 1 && confidence <= 100) confidence /= 100;
 
+  const classIndex = field(feed, 7);
+  const aiClass =
+    classIndex != null && Number.isInteger(classIndex) ? AI_CLASSES[classIndex] ?? null : null;
+
   return {
     temperature,
     humidity,
@@ -77,7 +89,9 @@ export function parseFeed(
     humidity2: field(feed, 4),
     mq2_1: field(feed, 5) ?? 0,
     mq2_2: field(feed, 6) ?? 0,
-    fireDetected: (field(feed, 7) ?? 0) >= 1,
+    aiClass,
+    fireDetected: aiClass === "Fire",
+    smokeDetected: aiClass === "Smoke",
     aiConfidence: confidence,
     timestamp,
     entryId: typeof feed.entry_id === "number" ? feed.entry_id : null,

@@ -15,6 +15,7 @@
     "src/thingspeak.ts",
     "src/alertRules.ts",
     "src/firestore.ts",
+    "src/deviceAlert.ts",
     "src/*.test.ts"
   ]
 }

@@ -15,6 +15,7 @@
  */
 
 import { decideAlert, OPEN_STATUSES } from "./alertRules.js";
+import { parseDeviceAlert, safeEqual } from "./deviceAlert.js";
 import { pushAlert } from "./fcm.js";
 import { Firestore, newDocId, type Doc, type Plain, type Write } from "./firestore.js";
 import { accessToken, type ServiceAccount } from "./google.js";
@@ -170,6 +171,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
     humidity2: reading.humidity2,
   });
   const fireProbability = reading.fireDetected ? reading.aiConfidence * 100 : 0;
+  const smokeProbability = reading.smokeDetected ? reading.aiConfidence * 100 : 0;
 
   await ctx.fs.commit([
     {
@@ -186,10 +188,11 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         humidity2: reading.humidity2,
         mq2Sensor1: reading.mq2_1,
         mq2Sensor2: reading.mq2_2,
+        aiClass: reading.aiClass,
         fireDetected: reading.fireDetected,
         aiConfidence: reading.aiConfidence,
         fireProbability,
-        smokeProbability: 0,
+        smokeProbability,
         riskPoints: risk.points,
         riskScore: risk.score,
         riskLevel: risk.level,
@@ -209,6 +212,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         mq2_1: reading.mq2_1,
         mq2_2: reading.mq2_2,
         fireProbability,
+        smokeProbability,
         riskScore: risk.score,
         entryId: reading.entryId,
       },
@@ -219,7 +223,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
   if (decision) {
     await createAlertIfNew(ctx, channel.nodeId, decision.type, decision.severity, {
       fireProbability,
-      smokeProbability: 0,
+      smokeProbability,
       temperature: reading.temperature,
       humidity: reading.humidity,
       latitude: asNumber(device?.data.latitude),
@@ -229,6 +233,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         humidity2: reading.humidity2,
         mq2_1: reading.mq2_1,
         mq2_2: reading.mq2_2,
+        aiClass: reading.aiClass,
         aiConfidence: reading.aiConfidence,
         entryId: reading.entryId,
       },
@@ -503,6 +508,81 @@ async function deleteOldReadings(ctx: Context): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Instant alerts from nodes: POST /alert
+// ---------------------------------------------------------------------------
+
+/** Per-node secrets from config/deviceKeys, cached per isolate for 5 minutes. */
+let deviceKeys: { keys: Record<string, Plain>; loaded: number } | null = null;
+
+async function deviceKeyFor(ctx: Context, node: string): Promise<string | null> {
+  if (!deviceKeys || Date.now() - deviceKeys.loaded > 300_000) {
+    const doc = await ctx.fs.get("config/deviceKeys");
+    deviceKeys = { keys: doc?.data ?? {}, loaded: Date.now() };
+  }
+  const key = deviceKeys.keys[node];
+  return typeof key === "string" ? key : null;
+}
+
+function json(status: number, body: Record<string, unknown>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function handleDeviceAlert(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json(400, { error: "Body must be JSON." });
+  }
+
+  const alert = parseDeviceAlert(body);
+  if (typeof alert === "string") return json(400, { error: alert });
+
+  const ctx = context(env);
+  const expected = await deviceKeyFor(ctx, alert.node);
+  if (!expected || !safeEqual(expected, alert.key)) {
+    return json(403, { error: "Unknown node or wrong key." });
+  }
+
+  const device = await ctx.fs.get(`devices/${alert.node}`);
+  const confidence = alert.aiConfidence ?? 0;
+  const alertId = await createAlertIfNew(ctx, alert.node, alert.type, alert.severity, {
+    source: "device",
+    fireProbability: alert.aiClass === "Fire" ? confidence * 100 : 0,
+    smokeProbability: alert.aiClass === "Smoke" ? confidence * 100 : 0,
+    temperature: alert.temperature ?? 0,
+    humidity: alert.humidity ?? 0,
+    latitude: asNumber(device?.data.latitude),
+    longitude: asNumber(device?.data.longitude),
+    sensorReadings: {
+      mq2_1: alert.mq2_1,
+      mq2_2: alert.mq2_2,
+      aiClass: alert.aiClass,
+      aiConfidence: alert.aiConfidence,
+      riskScore: alert.riskScore,
+    },
+  });
+
+  if (!alertId) return json(200, { status: "duplicate" });
+
+  // Push now rather than on the next minute's sweep.
+  const created = await ctx.fs.get(`alerts/${alertId}`);
+  if (created) {
+    await run(`push ${alertId}`, async () => {
+      await pushAlert(ctx.fs, ctx.projectId, ctx.token, alertId, created.data, {
+        maxSends: budget(ctx, 2),
+      });
+      await ctx.fs.set(created.path, { pushedAt: new Date() }, true);
+    });
+  }
+
+  return json(201, { status: "created", alertId });
+}
+
+// ---------------------------------------------------------------------------
 
 export default {
   async scheduled(event: ScheduledController, env: Env, executionCtx: ExecutionContext) {
@@ -523,8 +603,19 @@ export default {
     executionCtx.waitUntil(run(event.cron, job));
   },
 
-  /** Health check only; all work happens on the schedule. */
-  async fetch(): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/alert") {
+      if (request.method !== "POST") return json(405, { error: "Use POST." });
+      try {
+        return await handleDeviceAlert(request, env);
+      } catch (error) {
+        console.error("device alert failed:", error instanceof Error ? error.message : error);
+        return json(500, { error: "Alert could not be saved; the node will retry." });
+      }
+    }
+
     return new Response(`Forest Fire backend ${VERSION}\n`, {
       headers: { "Content-Type": "text/plain" },
     });

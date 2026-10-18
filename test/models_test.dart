@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forest_fire_monitor/models/alert_model.dart';
 import 'package:forest_fire_monitor/models/app_user.dart';
+import 'package:forest_fire_monitor/models/live_reading.dart';
 import 'package:forest_fire_monitor/models/node_model.dart';
 import 'package:forest_fire_monitor/models/reading_model.dart';
 import 'package:forest_fire_monitor/utils/risk_utils.dart';
@@ -159,6 +160,31 @@ void main() {
       expect(r.humidity, 50);
       expect(r.smoke, 610);
       expect(r.riskScore, 58);
+    });
+  });
+
+  group('LiveReading', () {
+    test('parses a node sample and detects a paused feed', () {
+      final sent = DateTime(2026, 10, 18, 12);
+      final r = LiveReading.fromMap({
+        't1': 31.4,
+        'h1': 48,
+        'mq1': 412,
+        'mq2': 390,
+        'risk': 33,
+        'level': 'MODERATE',
+        'ai': 'Smoke',
+        'conf': 0.81,
+        'ts': sent.millisecondsSinceEpoch,
+      });
+
+      expect(r.temperature, 31.4);
+      expect(r.smoke1, 412);
+      expect(r.riskLevel, 'MODERATE');
+      expect(r.aiClass, 'Smoke');
+      expect(r.temperature2, isNull);
+      expect(r.isStaleAt(sent.add(const Duration(seconds: 3))), isFalse);
+      expect(r.isStaleAt(sent.add(const Duration(seconds: 15))), isTrue);
     });
   });
 

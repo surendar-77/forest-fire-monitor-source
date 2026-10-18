@@ -4,7 +4,8 @@ Field layout (per channel):
   1 Temperature 1 (°C)   2 Humidity 1 (%)
   3 Temperature 2 (°C)   4 Humidity 2 (%)
   5 MQ-2 sensor 1        6 MQ-2 sensor 2
-  7 Fire detected (0/1)  8 AI confidence (0-1 or 0-100)
+  7 AI class: 0 Fire, 1 Normal, 2 Smoke (as ForestFire_S3.ino sends it)
+  8 AI confidence of that class (0-1 or 0-100)
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import requests
+
+AI_CLASSES = ("Fire", "Normal", "Smoke")
 
 
 @dataclass(frozen=True)
@@ -23,8 +26,10 @@ class SensorReading:
     humidity2: float | None
     mq2_1: float
     mq2_2: float
+    ai_class: str | None  # camera model prediction, None before the first
     fire_detected: bool
-    ai_confidence: float  # 0-1
+    smoke_detected: bool
+    ai_confidence: float  # 0-1, of ai_class
     timestamp: datetime
     entry_id: int | None
     age_seconds: float
@@ -70,6 +75,13 @@ def parse_feed(feed: dict, now: datetime, max_age_seconds: float) -> SensorReadi
 
     entry_id = feed.get("entry_id")
 
+    class_index = _field(feed, 7)
+    ai_class = (
+        AI_CLASSES[int(class_index)]
+        if class_index is not None and class_index.is_integer() and 0 <= class_index < 3
+        else None
+    )
+
     return SensorReading(
         temperature=temperature,
         humidity=humidity,
@@ -77,7 +89,9 @@ def parse_feed(feed: dict, now: datetime, max_age_seconds: float) -> SensorReadi
         humidity2=_field(feed, 4),
         mq2_1=_field(feed, 5) or 0.0,
         mq2_2=_field(feed, 6) or 0.0,
-        fire_detected=(_field(feed, 7) or 0) >= 1,
+        ai_class=ai_class,
+        fire_detected=ai_class == "Fire",
+        smoke_detected=ai_class == "Smoke",
         ai_confidence=confidence,
         timestamp=timestamp,
         entry_id=entry_id if isinstance(entry_id, int) else None,

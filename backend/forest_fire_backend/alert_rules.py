@@ -21,10 +21,16 @@ class AlertDecision:
 def decide_alert(reading: SensorReading, risk_level: str) -> AlertDecision | None:
     """Mirrors integrated_monitor.py (CRITICAL risk -> HIGH alert, HIGH risk ->
     MODERATE alert) and also acts on the node's own on-device AI detection
-    (ThingSpeak fields 7/8), escalating when the environment agrees."""
-    if reading.fire_detected and reading.ai_confidence >= AI_FIRE_CONFIDENCE_THRESHOLD:
-        environment_agrees = risk_level in ("HIGH", "CRITICAL")
+    (ThingSpeak fields 7/8: Fire or Smoke class), escalating when the
+    environment agrees."""
+    confident = reading.ai_confidence >= AI_FIRE_CONFIDENCE_THRESHOLD
+    environment_agrees = risk_level in ("HIGH", "CRITICAL")
+
+    if reading.fire_detected and confident:
         return AlertDecision("FIRE", "CRITICAL" if environment_agrees else "HIGH")
+
+    if reading.smoke_detected and confident:
+        return AlertDecision("SMOKE", "HIGH" if environment_agrees else "MODERATE")
 
     if risk_level == "CRITICAL":
         return AlertDecision("ENVIRONMENTAL_RISK", "HIGH")

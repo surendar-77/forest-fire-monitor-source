@@ -10,13 +10,27 @@ Everything is free: Firebase's **Spark** plan, plus a backend on
 minute).
 
 ```
-ESP32-S3 node ──► ThingSpeak ──► backend (Cloudflare Worker, cron every minute)
-                                   │  devices/{node}, readings, hourly, alerts
-                                   ▼
-                             Firestore ◄──► Flutter app (sign-in, roles, live data)
-                                   │
-                           backend ──► FCM push to officers' phones and browsers
+                ┌─ every 1 s ──► Realtime Database live/{node} ──► app live card
+ESP32-S3 node ──┼─ fire/smoke ─► backend POST /alert ──► FCM push in ~2 s
+                └─ every 60 s ─► ThingSpeak ──► backend (Cloudflare Worker, every minute)
+                                                 │  devices, readings, hourly, alerts
+                                                 ▼
+                                           Firestore ◄──► Flutter app (sign-in, roles, history)
 ```
+
+### Data timing
+
+| What | How often | Where |
+|---|---|---|
+| Smoke sensors (MQ-2) | every 1 s | live feed |
+| Temperature / humidity (DHT22) | every 2.5 s (the DHT22 can't be read faster; swap in an SHT31/SHT40 for 1 s) | live feed |
+| Camera AI | every ~15 s (on-device inference time) | live feed, instant alert |
+| History for charts | 60 s summary with the worst value of each sensor | ThingSpeak → Firestore |
+| Fire, smoke or high-risk alert | immediately, decided on the node | backend → push |
+
+ThingSpeak's free plan can't take per-second data (15 s minimum, about 3
+million messages a year), so per-second values go to the Firebase Realtime
+Database, which charges for data downloaded, not per write.
 
 ## Roles
 
@@ -92,7 +106,17 @@ cd rules-tests && npm ci && npm test      # rules tests; needs Java 11+
 
    *Alternative:* run the Python service on a PC or Raspberry Pi that stays on
    (`backend\run_backend.bat`, or `backend/forest-fire-backend.service`).
-6. **Stop the old bridge.** Stop running `integrated_monitor.py` from
+6. **Per-second live feed and instant alerts.**
+   - In the Firebase console, go to Realtime Database → **Create Database**.
+     Choose **Singapore (asia-southeast1)** and start in **locked mode**.
+   - Under Rules, paste in `database.rules.json` and click Publish.
+   - Register the node and get its secret key (from `backend/`):
+     ```sh
+     python -m forest_fire_backend.manage add-device NODE-01 --database-url https://forest-fire-monitor-55cf4-default-rtdb.asia-southeast1.firebasedatabase.app
+     ```
+   - Paste the printed `NODE_ID`, `NODE_KEY` and `RTDB_URL` lines into
+     `ForestFire_S3.ino`, then compile and flash it.
+7. **Stop the old bridge.** Stop running `integrated_monitor.py` from
    `forest_fire_integration_final/`. The new service replaces it, and the old
    one writes risk on a 0–12 scale.
 

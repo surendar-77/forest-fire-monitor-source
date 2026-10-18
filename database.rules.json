@@ -1,0 +1,39 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "live": {
+      "$node": {
+        ".write": "root.child('deviceKeys').child($node).exists() && newData.child('key').val() === root.child('deviceKeys').child($node).val()",
+        ".validate": "newData.hasChildren(['values', 'key'])",
+
+        "values": {
+          ".read": "auth != null",
+          ".validate": "newData.hasChildren(['ts'])",
+          "ts": { ".validate": "newData.val() === now" },
+          "t1": { ".validate": "newData.isNumber() && newData.val() > -50 && newData.val() < 100" },
+          "h1": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+          "t2": { ".validate": "newData.isNumber() && newData.val() > -50 && newData.val() < 100" },
+          "h2": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+          "mq1": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4095" },
+          "mq2": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 4095" },
+          "risk": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+          "level": { ".validate": "newData.isString() && newData.val().length <= 10" },
+          "ai": { ".validate": "newData.isString() && newData.val().length <= 10" },
+          "conf": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1" },
+          "up": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+
+        "key": { ".validate": "newData.isString()" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "deviceKeys": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

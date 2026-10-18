@@ -257,6 +257,7 @@ class BackendService:
             reading.humidity2,
         )
         fire_probability = reading.ai_confidence * 100 if reading.fire_detected else 0.0
+        smoke_probability = reading.ai_confidence * 100 if reading.smoke_detected else 0.0
 
         batch = self.db.batch()
         batch.set(
@@ -271,10 +272,11 @@ class BackendService:
                 "humidity2": reading.humidity2,
                 "mq2Sensor1": reading.mq2_1,
                 "mq2Sensor2": reading.mq2_2,
+                "aiClass": reading.ai_class,
                 "fireDetected": reading.fire_detected,
                 "aiConfidence": reading.ai_confidence,
                 "fireProbability": fire_probability,
-                "smokeProbability": 0,
+                "smokeProbability": smoke_probability,
                 "riskPoints": risk.points,
                 "riskScore": risk.score,
                 "riskLevel": risk.level,
@@ -295,6 +297,7 @@ class BackendService:
                 "mq2_1": reading.mq2_1,
                 "mq2_2": reading.mq2_2,
                 "fireProbability": fire_probability,
+                "smokeProbability": smoke_probability,
                 "riskScore": risk.score,
                 "entryId": reading.entry_id,
             },
@@ -322,7 +325,7 @@ class BackendService:
                 decision.severity,
                 {
                     "fireProbability": fire_probability,
-                    "smokeProbability": 0,
+                    "smokeProbability": smoke_probability,
                     "temperature": reading.temperature,
                     "humidity": reading.humidity,
                     "latitude": latitude,
