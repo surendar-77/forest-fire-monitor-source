@@ -14,6 +14,7 @@ import 'services/auth_service.dart';
 import 'services/fcm_service.dart';
 import 'services/node_repository.dart';
 import 'services/notification_service.dart';
+import 'theme/app_theme.dart';
 
 /// Crashlytics has no web implementation.
 bool get _crashReportingSupported => !kIsWeb;
@@ -84,10 +85,7 @@ class ForestFireApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Forest Fire Monitor',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
-      ),
+      theme: AppTheme.light(),
       home: AuthGate(auth: auth, repository: repository),
       routes: {
         '/location-settings': (context) => const LocationSettingsScreen(),

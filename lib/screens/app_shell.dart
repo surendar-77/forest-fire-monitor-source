@@ -186,11 +186,7 @@ class _AppShellState extends State<AppShell> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(
-              _titles[_selectedIndex],
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            centerTitle: true,
+            title: Text(_titles[_selectedIndex]),
             actions: [
               if (widget.auth.isAdmin) _dataSourceMenu(context),
               IconButton(
