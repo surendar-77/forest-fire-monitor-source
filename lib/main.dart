@@ -82,13 +82,6 @@ class ForestFireApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
       ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.red,
-          brightness: Brightness.dark,
-        ),
-      ),
       home: AuthGate(auth: auth, repository: repository),
       routes: {
         '/location-settings': (context) => const LocationSettingsScreen(),

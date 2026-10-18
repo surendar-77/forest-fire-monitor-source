@@ -11,11 +11,17 @@ import '../models/app_user.dart';
 /// the app agree on what a user may do.
 class AuthService extends ChangeNotifier {
   AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
-    : _auth = auth ?? FirebaseAuth.instance,
-      _firestore = firestore ?? FirebaseFirestore.instance;
+    : _authOverride = auth,
+      _firestoreOverride = firestore;
 
-  final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
+  // Resolved on first use so the service can be constructed (and faked in
+  // widget tests) without an initialised Firebase app.
+  final FirebaseAuth? _authOverride;
+  final FirebaseFirestore? _firestoreOverride;
+
+  FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
+  FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
 
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?

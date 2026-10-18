@@ -63,3 +63,7 @@ functions/lib/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+
+# Build-time keys (copy from config/*.example.json)
+config/*.json
+!config/*.example.json

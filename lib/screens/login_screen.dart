@@ -109,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text(
                         'Sign in with the account your administrator gave you.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey.shade700),
+                        style: TextStyle(color: colors.onSurfaceVariant),
                       ),
                       const SizedBox(height: 28),
                       TextFormField(

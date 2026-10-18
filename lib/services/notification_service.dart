@@ -19,8 +19,19 @@ class NotificationService {
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
+    // Permission is requested later by FcmService, after sign-in, so the
+    // prompt appears once and in context.
+    const DarwinInitializationSettings darwinSettings =
+        DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        );
+
     const InitializationSettings settings = InitializationSettings(
       android: androidSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
     );
 
     await _notifications.initialize(
@@ -71,8 +82,17 @@ class NotificationService {
           ticker: 'Forest Fire Alert',
         );
 
+    const DarwinNotificationDetails darwinDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBanner: true,
+      presentSound: true,
+      interruptionLevel: InterruptionLevel.timeSensitive,
+    );
+
     const NotificationDetails notificationDetails = NotificationDetails(
       android: androidDetails,
+      iOS: darwinDetails,
+      macOS: darwinDetails,
     );
 
     await _notifications.show(

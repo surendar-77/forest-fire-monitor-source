@@ -1,0 +1,8 @@
+{
+  "ENV": "prod",
+  "WEB_PUSH_VAPID_KEY": "<Firebase console > Project settings > Cloud Messaging > Web Push certificates>",
+  "MAP_TILE_URL": "https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key={key}",
+  "MAP_TILE_KEY": "<MapTiler key, restricted to your app/domain>",
+  "MAP_ATTRIBUTION": "© MapTiler © OpenStreetMap contributors",
+  "ROUTING_API_KEY": "<OpenRouteService key>"
+}
