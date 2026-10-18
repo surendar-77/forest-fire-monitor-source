@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { dangerLevel, fireDangerModel, fireDangerProbability } from "./fireDanger.js";
+import {
+  dangerIndex,
+  dangerLevel,
+  fireChance,
+  fireDangerModel,
+  fireDangerProbability,
+  rawProbability,
+} from "./fireDanger.js";
 import { ffmc, isi } from "./fwi.js";
 import { dangerInputs, type HourlyWeather } from "./weather.js";
 
@@ -24,16 +31,35 @@ test("FFMC and ISI match the Python implementation the model was trained with", 
 
 test("model probabilities match scikit-learn", () => {
   for (const { input, probability } of fireDangerModel.fixtures) {
-    const p = fireDangerProbability(input);
+    const p = rawProbability(input);
     assert.ok(Math.abs(p - probability) < 1e-5, `${input}: ${p} vs ${probability}`);
   }
 });
 
-test("hot, dry, windy weather scores higher than cool, wet weather", () => {
-  const dry = fireDangerProbability([38, 0, isi(94, 25)]);
-  const wet = fireDangerProbability([24, 15, isi(40, 10)]);
-  assert.ok(dry > 0.75, `dry ${dry}`);
-  assert.ok(wet < 0.25, `wet ${wet}`);
+test("model features are the ones the Worker computes", () => {
+  assert.deepEqual(fireDangerModel.features, ["Temperature", "RH", "Wind", "Rain", "FFMC", "ISI", "MonthSin", "MonthCos"]);
+});
+
+test("a dry April afternoon in central India is far more dangerous than a monsoon day", () => {
+  const april = fireDangerProbability({ temp: 39, rh: 15, wind: 15, rain24h: 0, ffmc: 94, isi: isi(94, 15), month: 4 });
+  const monsoon = fireDangerProbability({ temp: 28, rh: 88, wind: 10, rain24h: 20, ffmc: 40, isi: isi(40, 10), month: 8 });
+  assert.ok(april >= 0.5, `april ${april}`);
+  assert.ok(monsoon < 0.1, `monsoon ${monsoon}`);
+});
+
+test("the same weather is more dangerous in the fire season", () => {
+  const day = { temp: 33, rh: 30, wind: 12, rain24h: 0, ffmc: 90, isi: isi(90, 12) };
+  assert.ok(fireChance({ ...day, month: 3 }) > fireChance({ ...day, month: 10 }));
+});
+
+test("danger index maps the raw chance through the level breakpoints", () => {
+  const l = fireDangerModel.levels!;
+  assert.equal(dangerIndex(0), 0);
+  assert.ok(Math.abs(dangerIndex(l.medium) - 1 / 3) < 1e-9);
+  assert.ok(Math.abs(dangerIndex(l.high) - 2 / 3) < 1e-9);
+  assert.equal(dangerIndex(l.max), 1);
+  assert.equal(dangerIndex(0.9), 1);
+  assert.ok(dangerIndex(l.medium / 2) < dangerIndex(l.medium));
 });
 
 test("danger levels", () => {

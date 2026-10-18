@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import { terrainDanger } from "./fireDanger.js";
 import { adjustProbability, combineRisk, riskLevel, terrainFor } from "./terrain.js";
 
 test("terrain factors scale the odds and stay within 0-1", () => {
@@ -24,9 +25,10 @@ test("three risk levels", () => {
 });
 
 test("the same weather is riskier in a pine forest than in a desert", () => {
-  const base = { anomalyScore: 0, dangerProbability: 0.55, cameraFire: false, cameraSmoke: false };
-  const pine = combineRisk({ ...base, terrain: terrainFor("pine") });
-  const desert = combineRisk({ ...base, terrain: terrainFor("desert") });
+  const chance = 0.15; // raw model chance of a detected fire today
+  const base = { anomalyScore: 0, cameraFire: false, cameraSmoke: false };
+  const pine = combineRisk({ ...base, dangerProbability: terrainDanger(chance, 1.8), terrain: terrainFor("pine") });
+  const desert = combineRisk({ ...base, dangerProbability: terrainDanger(chance, 0.4), terrain: terrainFor("desert") });
 
   assert.equal(pine.level, "HIGH");
   assert.equal(desert.level, "LOW");

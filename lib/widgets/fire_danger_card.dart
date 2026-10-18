@@ -111,7 +111,9 @@ class FireDangerCard extends StatelessWidget {
 
   List<Widget> _dangerBody(FireDanger danger) {
     final color = colorFor(danger.level);
-    final percent = (danger.probability * 100).round();
+    final index = (danger.probability * 100).round();
+    final chance = danger.chance;
+    final average = danger.averageChance;
     final peak = danger.peak;
 
     return [
@@ -143,7 +145,7 @@ class FireDangerCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Text(
-            '$percent%',
+            '$index',
             style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: color),
           ),
           const SizedBox(width: 8),
@@ -151,13 +153,21 @@ class FireDangerCard extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'chance of fire-prone conditions for this terrain',
+                'danger index / 100 for this terrain',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
               ),
             ),
           ),
         ],
       ),
+      if (chance != null) ...[
+        const SizedBox(height: 4),
+        Text(
+          '${_percent(chance)} chance of a satellite-detected fire within 10 km today'
+          '${average == null ? '' : ' (average Indian forest day: ${_percent(average)})'}',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+      ],
       if (peak != null) ...[
         const SizedBox(height: 6),
         Row(
@@ -167,7 +177,7 @@ class FireDangerCard extends StatelessWidget {
             Expanded(
               child: Text(
                 'Highest in the next 24 h: ${peak.hourLabel} '
-                '(${(peak.probability * 100).round()}%, ${peak.level})',
+                '(index ${(peak.probability * 100).round()}, ${peak.level})',
                 style: TextStyle(fontWeight: FontWeight.w600, color: colorFor(peak.level)),
               ),
             ),
@@ -195,8 +205,8 @@ class FireDangerCard extends StatelessWidget {
       const SizedBox(height: 10),
       Text(
         '${danger.forecast ? "Based on today's noon forecast" : "Based on today's noon weather"}'
-        ' · ML model trained on the Algerian Forest Fires dataset (~89% accuracy '
-        'in tests), adjusted for terrain fuel type',
+        ' · ML model trained on 3 years of NASA satellite fire data from 45 Indian '
+        'forests (AUC 0.85 on states it never saw), adjusted for terrain fuel type',
         style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
       ),
     ];
@@ -212,7 +222,7 @@ class FireDangerCard extends StatelessWidget {
           for (final (i, h) in hours.indexed)
             Expanded(
               child: Tooltip(
-                message: '${h.hourLabel}  ${(h.probability * 100).round()}% ${h.level}',
+                message: '${h.hourLabel}  index ${(h.probability * 100).round()} ${h.level}',
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -268,6 +278,9 @@ class FireDangerCard extends StatelessWidget {
       ),
     ];
   }
+
+  String _percent(double p) =>
+      p < 0.01 ? '<1%' : '${(p * 100).toStringAsFixed(p < 0.1 ? 1 : 0)}%';
 
   String _distance(int metres) =>
       metres >= 1000 ? '${(metres / 1000).toStringAsFixed(1)} km' : '$metres m';

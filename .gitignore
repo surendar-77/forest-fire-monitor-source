@@ -79,3 +79,5 @@ worker/.dev.vars
 ml/.venv/
 ml/data/*.zip
 **/__pycache__/
+ml/data/india/viirs_*.csv
+ml/data/india/weather/

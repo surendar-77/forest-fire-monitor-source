@@ -33,7 +33,7 @@ from fwi import ffmc_series, isi
 warnings.filterwarnings("ignore")
 
 FEATURES = ["Temperature", "Rain", "ISI"]
-OUT = Path(__file__).parent.parent / "worker" / "src" / "models" / "fireDanger.json"
+OUT = Path(__file__).parent / "models" / "fire_danger_algeria.json"  # superseded by train_fire_danger_india.py
 MODEL_ID = "fire-danger-gbm-v1"
 
 

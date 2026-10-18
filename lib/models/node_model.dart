@@ -6,7 +6,13 @@ enum NodeStatus { online, stale, offline, unknown }
 /// Today's fire-danger rating from the backend's ML model
 /// (`devices/{id}.danger`), based on standard noon weather at the node.
 class FireDanger {
+  /// Danger index 0-1 (1/3 = Medium, 2/3 = High), terrain-adjusted.
   final double probability;
+
+  /// Chance (0-1) of a satellite-detected fire within 10 km today,
+  /// terrain-adjusted, and the average over Indian forest days.
+  final double? chance;
+  final double? averageChance;
   final String level;
   final double? ffmc;
   final double? isi;
@@ -31,6 +37,8 @@ class FireDanger {
   const FireDanger({
     required this.probability,
     required this.level,
+    this.chance,
+    this.averageChance,
     this.ffmc,
     this.isi,
     this.temperature,
@@ -56,6 +64,8 @@ class FireDanger {
     return FireDanger(
       probability: probability,
       level: parseString(value['level'], 'LOW'),
+      chance: parseDoubleOrNull(value['chance']),
+      averageChance: parseDoubleOrNull(value['averageChance']),
       ffmc: parseDoubleOrNull(value['ffmc']),
       isi: parseDoubleOrNull(value['isi']),
       temperature: parseDoubleOrNull(value['temperature']),

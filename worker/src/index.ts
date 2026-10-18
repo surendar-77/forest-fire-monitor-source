@@ -24,7 +24,7 @@ import {
   type Reading,
 } from "./anomaly.js";
 import { parseDeviceAlert, safeEqual } from "./deviceAlert.js";
-import { dangerLevel, fireDangerModel, fireDangerProbability } from "./fireDanger.js";
+import { dangerIndex, dangerLevel, fireChance, fireDangerModel, terrainDanger } from "./fireDanger.js";
 import { ffmc, ffmcAfter, isi } from "./fwi.js";
 import { currentConditions, dangerInputs, fetchHourlyWeather, upcomingHours } from "./weather.js";
 import { fetchAirQuality } from "./airQuality.js";
@@ -193,7 +193,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
   const confident = reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD;
   const risk = combineRisk({
     anomalyScore: anomaly.score,
-    dangerProbability: typeof danger?.baseProbability === "number" ? danger.baseProbability : null,
+    dangerProbability: dangerFor(danger, terrain),
     terrain,
     cameraFire: reading.fireDetected && confident,
     cameraSmoke: reading.smokeDetected && confident,
@@ -658,6 +658,16 @@ async function hourlyRollup(ctx: Context): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Terrain-adjusted danger index for combining with sensor risk, from the
+ * node's last hourly rating. Re-applies the current terrain, so a terrain
+ * change takes effect on the next reading rather than the next hour.
+ */
+function dangerFor(danger: Record<string, Plain> | null | undefined, terrain: Terrain): number | null {
+  if (typeof danger?.baseChance === "number") return terrainDanger(danger.baseChance, terrain.factor);
+  return typeof danger?.probability === "number" ? danger.probability : null;
+}
+
+/**
  * Today's fire-danger rating from today's noon weather (forecast before
  * noon), matching the daily noon features the model was trained on. FFMC is
  * rebuilt each run from 14 days of noon weather (it forgets older weather
@@ -676,8 +686,11 @@ async function nodeFireDanger(
   const { temp, rh, wind, rain24h } = inputs.today;
   const ffmcToday = ffmc(temp, rh, wind, rain24h, ffmcYesterday);
   const isiToday = isi(ffmcToday, wind);
-  const baseProbability = fireDangerProbability([temp, rain24h, isiToday]);
-  const probability = adjustProbability(baseProbability, terrain.factor);
+  const month = Number(inputs.todayNoon.slice(5, 7));
+  const baseChance = fireChance({ temp, rh, wind, rain24h, ffmc: ffmcToday, isi: isiToday, month });
+  const chance = adjustProbability(baseChance, terrain.factor);
+  const baseProbability = dangerIndex(baseChance);
+  const probability = dangerIndex(chance);
 
   const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
 
@@ -686,7 +699,8 @@ async function nodeFireDanger(
   // but it places the afternoon peak and overnight lull correctly.
   const timeline = upcomingHours(weather.hourly, weather.nowLocal, 24).map(({ time, weather: h }) => {
     const f = ffmc(h.temp, h.rh, h.wind, h.rain24h, ffmcYesterday);
-    const p = adjustProbability(fireDangerProbability([h.temp, h.rain24h, isi(f, h.wind)]), terrain.factor);
+    const hourChance = fireChance({ ...h, ffmc: f, isi: isi(f, h.wind), month: Number(time.slice(5, 7)) });
+    const p = terrainDanger(hourChance, terrain.factor);
     return { time, probability: round(p, 3), level: riskLevel3(p) };
   });
   const peak = timeline.reduce<(typeof timeline)[number] | null>(
@@ -708,6 +722,9 @@ async function nodeFireDanger(
   return {
     probability: round(probability, 3),
     baseProbability: round(baseProbability, 3),
+    chance: round(chance, 4),
+    baseChance: round(baseChance, 4),
+    averageChance: fireDangerModel.baseRate ?? null,
     level: riskLevel3(probability),
     modelLevel: dangerLevel(baseProbability),
     terrain: terrain.id,
