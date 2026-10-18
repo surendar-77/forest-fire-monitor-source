@@ -3,6 +3,59 @@ import 'detection_model.dart';
 
 enum NodeStatus { online, stale, offline, unknown }
 
+/// Today's fire-danger rating from the backend's ML model
+/// (`devices/{id}.danger`), based on standard noon weather at the node.
+class FireDanger {
+  final double probability;
+  final String level;
+  final double? ffmc;
+  final double? isi;
+  final double? temperature;
+  final double? humidity;
+  final double? wind;
+  final double? rain24h;
+  final String? forDate;
+  final bool forecast;
+  final DateTime? updatedAt;
+  final String? model;
+
+  const FireDanger({
+    required this.probability,
+    required this.level,
+    this.ffmc,
+    this.isi,
+    this.temperature,
+    this.humidity,
+    this.wind,
+    this.rain24h,
+    this.forDate,
+    this.forecast = false,
+    this.updatedAt,
+    this.model,
+  });
+
+  static FireDanger? fromMap(dynamic value) {
+    if (value is! Map) return null;
+    final probability = parseDoubleOrNull(value['probability']);
+    if (probability == null) return null;
+
+    return FireDanger(
+      probability: probability,
+      level: parseString(value['level'], 'LOW'),
+      ffmc: parseDoubleOrNull(value['ffmc']),
+      isi: parseDoubleOrNull(value['isi']),
+      temperature: parseDoubleOrNull(value['temperature']),
+      humidity: parseDoubleOrNull(value['humidity']),
+      wind: parseDoubleOrNull(value['wind']),
+      rain24h: parseDoubleOrNull(value['rain24h']),
+      forDate: parseStringOrNull(value['forDate']),
+      forecast: parseBool(value['forecast'], false),
+      updatedAt: parseDateTimeOrNull(value['updatedAt']),
+      model: parseStringOrNull(value['model']),
+    );
+  }
+}
+
 /// A monitoring node, read from `devices/{nodeId}`.
 class NodeModel {
   /// After this long without data the node is shown as stale, even if the
@@ -17,6 +70,7 @@ class NodeModel {
   final DateTime? lastSeen;
   final String reportedStatus;
   final bool hasLocation;
+  final FireDanger? danger;
 
   const NodeModel({
     required this.id,
@@ -26,6 +80,7 @@ class NodeModel {
     required this.hasLocation,
     this.zone,
     this.lastSeen,
+    this.danger,
   });
 
   double get latitude => detection.latitude;
@@ -90,6 +145,7 @@ class NodeModel {
       lastSeen: parseDateTimeOrNull(data['lastSeen']),
       reportedStatus: parseString(data['status'], 'UNKNOWN').toUpperCase(),
       hasLocation: hasLocation,
+      danger: FireDanger.fromMap(data['danger']),
     );
   }
 }

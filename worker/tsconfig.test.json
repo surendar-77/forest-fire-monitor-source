@@ -1,14 +1,16 @@
 {
-  // Compiles the runtime-independent modules and their tests for node --test.
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "strict": true,
     "skipLibCheck": true,
     "outDir": "build",
-    "rootDir": "src"
+    "rootDir": "src",
+    "resolveJsonModule": true
   },
   "include": [
     "src/risk.ts",
@@ -16,6 +18,10 @@
     "src/alertRules.ts",
     "src/firestore.ts",
     "src/deviceAlert.ts",
+    "src/fwi.ts",
+    "src/fireDanger.ts",
+    "src/weather.ts",
+    "src/models/*.json",
     "src/*.test.ts"
   ]
 }

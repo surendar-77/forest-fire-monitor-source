@@ -74,3 +74,8 @@ worker/node_modules/
 worker/build/
 worker/.wrangler/
 worker/.dev.vars
+
+# ML
+ml/.venv/
+ml/data/*.zip
+**/__pycache__/

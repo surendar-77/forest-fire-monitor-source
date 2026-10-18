@@ -6,7 +6,7 @@
  *   "* * * * *"     ingest every ThingSpeak channel
  *   "*\/1 * * * *"  push new alerts (every minute, separate budget)
  *   "*\/5 * * * *"  node health, alertActive, escalation, role requests, heartbeat
- *   "7 * * * *"     hourly rollup of the previous hour
+ *   "7 * * * *"     hourly rollup of the previous hour + fire danger (ML)
  *   "23 21 * * *"   delete readings past retention (03:00 IST)
  *
  * Firestore stays inside the Spark plan's daily quota: queries that usually
@@ -16,6 +16,9 @@
 
 import { decideAlert, OPEN_STATUSES } from "./alertRules.js";
 import { parseDeviceAlert, safeEqual } from "./deviceAlert.js";
+import { dangerLevel, fireDangerModel, fireDangerProbability } from "./fireDanger.js";
+import { ffmc, ffmcAfter, isi } from "./fwi.js";
+import { dangerInputs, fetchHourlyWeather } from "./weather.js";
 import { pushAlert } from "./fcm.js";
 import { Firestore, newDocId, type Doc, type Plain, type Write } from "./firestore.js";
 import { accessToken, type ServiceAccount } from "./google.js";
@@ -445,6 +448,8 @@ async function hourlyRollup(ctx: Context): Promise<void> {
   const start = new Date(end.getTime() - 3_600_000);
 
   const devices = await ctx.fs.query("devices");
+  await run("fire danger", () => fireDangerJob(ctx, devices));
+
   const writes: Write[] = [];
 
   for (const device of devices) {
@@ -495,6 +500,68 @@ async function hourlyRollup(ctx: Context): Promise<void> {
       },
     });
   }
+
+  await ctx.fs.commit(writes);
+}
+
+// ---------------------------------------------------------------------------
+// Fire danger (ML): hourly, per node with saved coordinates
+// ---------------------------------------------------------------------------
+
+/**
+ * Today's fire-danger rating from today's noon weather (forecast before
+ * noon), matching the daily noon features the model was trained on. FFMC is
+ * rebuilt each run from 14 days of noon weather (it forgets older weather
+ * within days), so no state needs storing.
+ */
+async function nodeFireDanger(latitude: number, longitude: number): Promise<Record<string, Plain>> {
+  const weather = await fetchHourlyWeather(latitude, longitude);
+  const inputs = dangerInputs(weather.hourly, weather.nowLocal);
+  if (!inputs) throw new Error("No usable weather for this location");
+
+  const ffmcYesterday = ffmcAfter(inputs.pastNoons);
+  const { temp, rh, wind, rain24h } = inputs.today;
+  const ffmcToday = ffmc(temp, rh, wind, rain24h, ffmcYesterday);
+  const isiToday = isi(ffmcToday, wind);
+  const probability = fireDangerProbability([temp, rain24h, isiToday]);
+
+  const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
+  return {
+    probability: round(probability, 3),
+    level: dangerLevel(probability),
+    ffmc: round(ffmcToday, 1),
+    isi: round(isiToday, 2),
+    temperature: round(temp, 1),
+    humidity: round(rh, 0),
+    wind: round(wind, 1),
+    rain24h: round(rain24h, 1),
+    forDate: inputs.todayNoon.slice(0, 10),
+    forecast: inputs.forecast,
+    model: fireDangerModel.id,
+    updatedAt: new Date(),
+  };
+}
+
+async function fireDangerJob(ctx: Context, devices: Doc[]): Promise<void> {
+  const writes: Write[] = [];
+
+  await Promise.all(
+    devices.map(async (device) => {
+      const lat = device.data.latitude;
+      const lng = device.data.longitude;
+      if (typeof lat !== "number" || typeof lng !== "number" || (lat === 0 && lng === 0)) return;
+
+      try {
+        writes.push({
+          set: device.path,
+          merge: true,
+          data: { danger: await nodeFireDanger(lat, lng) },
+        });
+      } catch (error) {
+        console.error(`fire danger ${device.id}:`, error instanceof Error ? error.message : error);
+      }
+    }),
+  );
 
   await ctx.fs.commit(writes);
 }

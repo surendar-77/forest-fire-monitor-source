@@ -125,6 +125,21 @@ void main() {
       expect(n.longitude, 2);
     });
 
+    test('reads the ML fire-danger rating when present', () {
+      final n = node({
+        'danger': {
+          'probability': 0.61,
+          'level': 'HIGH',
+          'ffmc': 94.8,
+          'isi': 9.67,
+          'forecast': false,
+        },
+      });
+      expect(n.danger?.probability, 0.61);
+      expect(n.danger?.level, 'HIGH');
+      expect(node({}).danger, isNull);
+    });
+
     test('keeps saved coordinates', () {
       final n = node({'latitude': 12.5, 'longitude': 77.1});
 
