@@ -88,8 +88,8 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
-    // User profiles and push tokens. The `role` field is a mirror written
-    // by the backend; users can't set it.
+    // User profiles. The `role` field is a mirror written by the backend;
+    // users can't set it.
     // ------------------------------------------------------------------
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
@@ -102,11 +102,15 @@ service cloud.firestore {
         && changedKeys().hasOnly(
           ['subscribedNodes', 'displayName', 'email', 'updatedAt', 'notificationPrefs']);
 
-      match /tokens/{token} {
-        allow read, delete: if signedIn() && request.auth.uid == uid;
-        allow create, update: if signedIn() && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly(['platform', 'updatedAt']);
-      }
+    }
+
+    // Push tokens, one document per device. A token moves to whoever signs
+    // in on that device; only the owner can read or remove it.
+    match /pushTokens/{token} {
+      allow read, delete: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create, update: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'platform', 'updatedAt']);
     }
 
     // ------------------------------------------------------------------

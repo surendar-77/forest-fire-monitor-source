@@ -68,3 +68,9 @@ ui-debug.log
 # Build-time keys (copy from config/*.example.json)
 config/*.json
 !config/*.example.json
+
+# Cloudflare Worker
+worker/node_modules/
+worker/build/
+worker/.wrangler/
+worker/.dev.vars

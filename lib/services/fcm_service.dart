@@ -61,9 +61,9 @@ class FcmService {
     }
   }
 
-  /// Registers this device's push token under the signed-in user
-  /// (`users/{uid}/tokens/{token}`) so the backend can reach every phone the
-  /// user is signed in on. Safe to call repeatedly.
+  /// Registers this device's push token for the signed-in user
+  /// (`pushTokens/{token}` with their uid) so the backend can reach every
+  /// phone the user is signed in on. Safe to call repeatedly.
   static Future<void> registerForUser(String uid) async {
     if (_uid == uid && _token != null) {
       return;
@@ -123,12 +123,7 @@ class FcmService {
     }
 
     try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('tokens')
-          .doc(token)
-          .delete();
+      await _firestore.collection('pushTokens').doc(token).delete();
       await _messaging.deleteToken();
     } catch (error) {
       debugPrint('FCM unregister failed: $error');
@@ -187,15 +182,11 @@ class FcmService {
     _token = token;
 
     try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('tokens')
-          .doc(token)
-          .set({
-            'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+      await _firestore.collection('pushTokens').doc(token).set({
+        'uid': uid,
+        'platform': kIsWeb ? 'web' : defaultTargetPlatform.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     } catch (error) {
       debugPrint('Failed to save FCM token: $error');
     }

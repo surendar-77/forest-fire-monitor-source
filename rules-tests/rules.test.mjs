@@ -9,7 +9,15 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { deleteField, doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import {
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 
 let env;
 
@@ -167,16 +175,20 @@ describe("profiles and push tokens", () => {
   test("users can't touch other users' profiles or tokens", async () => {
     const db = as("u1");
     await assertFails(getDoc(doc(db, "users/u2")));
-    await assertFails(setDoc(doc(db, "users/u2/tokens/abc"), { platform: "android" }));
+    await assertFails(setDoc(doc(db, "pushTokens/abc"), { uid: "u2", platform: "android" }));
   });
 
-  test("users register their own push token", async () => {
+  test("users register and remove their own push token", async () => {
+    const db = as("u1");
     await assertSucceeds(
-      setDoc(doc(as("u1"), "users/u1/tokens/abc"), {
+      setDoc(doc(db, "pushTokens/abc"), {
+        uid: "u1",
         platform: "android",
         updatedAt: serverTimestamp(),
       }),
     );
+    await assertFails(getDoc(doc(as("u2"), "pushTokens/abc")));
+    await assertSucceeds(deleteDoc(doc(db, "pushTokens/abc")));
   });
 });
 

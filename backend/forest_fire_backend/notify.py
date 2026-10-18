@@ -18,21 +18,24 @@ MULTICAST_LIMIT = 500
 
 
 def _collect_tokens(db: Client, node_id: str | None, admins_only: bool) -> list[tuple[str, str]]:
-    """(token, document path) for every user in the audience."""
+    """(token, document path) for every device of every user in the audience.
+    Users with no profile document yet get node alerts but not escalations."""
+    profiles = {user.id: user.to_dict() or {} for user in db.collection("users").stream()}
     refs: list[tuple[str, str]] = []
 
-    for user in db.collection("users").stream():
-        data = user.to_dict() or {}
+    for token in db.collection("pushTokens").stream():
+        uid = str((token.to_dict() or {}).get("uid", ""))
+        profile = profiles.get(uid)
 
-        if admins_only and data.get("role") != "admin":
-            continue
+        if admins_only:
+            if not profile or profile.get("role") != "admin":
+                continue
+        elif profile is not None:
+            subscribed = profile.get("subscribedNodes")
+            if node_id and isinstance(subscribed, list) and subscribed and node_id not in subscribed:
+                continue
 
-        subscribed = data.get("subscribedNodes")
-        if node_id and isinstance(subscribed, list) and subscribed and node_id not in subscribed:
-            continue
-
-        for token in user.reference.collection("tokens").stream():
-            refs.append((token.id, token.reference.path))
+        refs.append((token.id, token.reference.path))
 
     return refs
 

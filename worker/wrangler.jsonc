@@ -1,0 +1,19 @@
+{
+  // Forest Fire Monitor backend. Deploy: npx wrangler deploy
+  // Secret (once): npx wrangler secret put FIREBASE_SERVICE_ACCOUNT < service-account.json
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "forest-fire-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "triggers": {
+    // Workers Free allows 5 cron triggers per account. See src/index.ts.
+    "crons": ["* * * * *", "*/1 * * * *", "*/5 * * * *", "7 * * * *", "23 21 * * *"]
+  },
+  "vars": {
+    "READING_RETENTION_DAYS": "30"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

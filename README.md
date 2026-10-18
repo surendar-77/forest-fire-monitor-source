@@ -1,19 +1,21 @@
 # Forest Fire Monitor
 
 Real-time forest fire detection and early warning for field officers.
-ESP32-S3 sensor nodes report to ThingSpeak. A small Python service turns
-readings into risk scores, alerts and push notifications. This Flutter app
-(Android, iOS, web) shows every node, its trends, and the alert workflow.
+ESP32-S3 sensor nodes report to ThingSpeak. A backend turns readings into
+risk scores, alerts and push notifications. This Flutter app (Android, iOS,
+web) shows every node, its trends, and the alert workflow.
 
-Everything runs on Firebase's **free Spark plan**.
+Everything is free: Firebase's **Spark** plan, plus a backend on
+**Cloudflare Workers'** free plan (no credit card, always on, runs every
+minute).
 
 ```
-ESP32-S3 node ──► ThingSpeak ──► backend service (Python, always-on PC / Raspberry Pi)
+ESP32-S3 node ──► ThingSpeak ──► backend (Cloudflare Worker, cron every minute)
                                    │  devices/{node}, readings, hourly, alerts
                                    ▼
                              Firestore ◄──► Flutter app (sign-in, roles, live data)
                                    │
-                    backend service ──► FCM push to officers' phones and browsers
+                           backend ──► FCM push to officers' phones and browsers
 ```
 
 ## Roles
@@ -33,9 +35,12 @@ Roles are Firebase Auth custom claims, enforced by `firestore.rules`.
     backend heartbeat
   - `services/auth_service.dart` sign-in and roles
   - `services/fcm_service.dart` per-user push tokens
-- `backend/` Python service. It replaces Cloud Functions, which need the paid
-  Blaze plan. It handles ThingSpeak polling, push alerts, node health,
-  escalation, role changes, cleanup and a heartbeat.
+- `worker/` the **backend**, as a Cloudflare Worker (TypeScript). It handles
+  ThingSpeak polling, push alerts, node health, escalation, role changes,
+  hourly rollups, cleanup and a heartbeat.
+- `backend/` the same backend as a Python service, plus the admin command
+  line (`manage`). Use it to self-host on a PC or Raspberry Pi instead of
+  Cloudflare. Run **either** the Worker **or** this service, never both.
 - `firestore.rules` security rules. `rules-tests/` holds their tests.
 - `config/*.example.json` build-time keys (copy to `config/prod.json`)
 
@@ -46,7 +51,8 @@ flutter pub get
 flutter run -d chrome                     # or an Android device
 flutter test && flutter analyze
 
-cd backend && python -m unittest          # backend tests
+cd worker && npm ci && npm test           # Worker backend tests
+cd backend && python -m unittest          # Python backend tests
 cd rules-tests && npm ci && npm test      # rules tests; needs Java 11+
 ```
 
@@ -71,15 +77,21 @@ cd rules-tests && npm ci && npm test      # rules tests; needs Java 11+
    python -m forest_fire_backend.manage grant-role you@example.org admin
    ```
    After that, admins assign roles in the app under Settings → Set a user's role.
-5. **Run the backend on a machine that stays on.**
-   - **Windows:** edit the key path in `backend\run_backend.bat` and
-     double-click it. To run it unattended, add it to Task Scheduler with the
-     trigger "At startup". It restarts itself if it crashes.
-   - **Raspberry Pi or Linux:** use `backend/forest-fire-backend.service`
-     (instructions are inside the file).
+5. **Deploy the backend to Cloudflare (free).** Create an account at
+   https://dash.cloudflare.com/sign-up (no card needed). Then, from `worker/`:
+   ```sh
+   npm ci
+   npx wrangler login
+   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT < C:\secure\forest-fire-service-account.json
+   npx wrangler deploy
+   npx wrangler tail          # live logs
+   ```
+   It runs every minute from then on, with nothing to keep switched on. If it
+   ever stops, every signed-in user sees a red "Alert service offline" banner
+   within 15 minutes.
 
-   If the service stops, every signed-in user sees a red "Alert service
-   offline" banner within 15 minutes.
+   *Alternative:* run the Python service on a PC or Raspberry Pi that stays on
+   (`backend\run_backend.bat`, or `backend/forest-fire-backend.service`).
 6. **Stop the old bridge.** Stop running `integrated_monitor.py` from
    `forest_fire_integration_final/`. The new service replaces it, and the old
    one writes risk on a 0–12 scale.
@@ -97,10 +109,13 @@ stay well under:
 | One app left open all day, per node | ~1,440 reads |
 | Each app start | up to ~100 reads (newest alerts and nodes) |
 | Each history view (1h / 24h / 7d) | ~60 / ~85 / ~170 reads |
+| Backend: device checks, open alerts, hourly rollup (per node) | ~4,500 reads |
 
 Rule of thumb: **up to 5 nodes**, and around **10 officers with the app open
-all day**. To cut usage, raise `POLL_SECONDS` (e.g. 120 halves the writes and
-live reads). Check usage under Firebase console → Firestore → Usage.
+all day**. Check usage under Firebase console → Firestore → Usage.
+
+The Cloudflare free plan (100,000 requests a day, 50 outbound requests per
+run) covers this. A single push run reaches up to about 45 devices.
 
 ## Release builds
 

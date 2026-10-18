@@ -1,0 +1,19 @@
+{
+  "name": "forest-fire-worker",
+  "private": true,
+  "description": "Forest Fire Monitor backend on Cloudflare Workers (free plan)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "logs": "wrangler tail",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test \"build/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261018.1",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.151.1"
+  }
+}
