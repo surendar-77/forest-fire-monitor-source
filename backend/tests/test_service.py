@@ -98,11 +98,12 @@ class EscalationTest(unittest.TestCase):
         s.escalate_alerts()
         self.assertEqual(self.push.call_count, 2)
 
-    def test_ignores_recent_or_acknowledged(self):
+    def test_ignores_recent_old_or_acknowledged(self):
         s = make_service()
         s.open_alerts = {
             "new": {"status": "ACTIVE", "detectedAt": utcnow() - timedelta(minutes=2)},
             "acked": {"status": "ACKNOWLEDGED", "detectedAt": utcnow() - timedelta(hours=1)},
+            "weeks_old": {"status": "ACTIVE", "detectedAt": utcnow() - timedelta(days=20)},
         }
         s.escalate_alerts()
         self.push.assert_not_called()

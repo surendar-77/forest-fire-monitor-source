@@ -44,6 +44,8 @@ MAX_FEED_AGE_SECONDS = int(os.getenv("THINGSPEAK_MAX_AGE_SECONDS", "120"))
 STALE_AFTER = timedelta(minutes=2)
 OFFLINE_AFTER = timedelta(minutes=10)
 ESCALATE_AFTER = timedelta(minutes=10)
+#: Older unacknowledged alerts are left on the alerts screen, not re-pushed.
+ESCALATION_MAX_AGE = timedelta(hours=6)
 READING_RETENTION = timedelta(days=int(os.getenv("READING_RETENTION_DAYS", "30")))
 #: Alerts older than this when first seen are not pushed (e.g. on restart).
 PUSH_WINDOW = timedelta(minutes=15)
@@ -475,7 +477,10 @@ class BackendService:
                 continue
 
             detected = data.get("detectedAt")
-            if not isinstance(detected, datetime) or now - detected < ESCALATE_AFTER:
+            if not isinstance(detected, datetime):
+                continue
+            age = now - detected
+            if age < ESCALATE_AFTER or age > ESCALATION_MAX_AGE:
                 continue
 
             level = int(data.get("escalationLevel", 0) or 0)

@@ -1,10 +1,11 @@
 @echo off
 rem Runs the Forest Fire backend service on Windows, restarting it if it exits.
-rem Set the key path below (keep the key OUTSIDE this repository), then
-rem double-click, or add to Task Scheduler "At startup" to run unattended.
+rem Point GOOGLE_APPLICATION_CREDENTIALS at the service-account key (keep the
+rem key OUTSIDE this repository), either here or before calling this script.
 
-set GOOGLE_APPLICATION_CREDENTIALS=C:\secure\forest-fire-service-account.json
-set POLL_SECONDS=60
+if not defined GOOGLE_APPLICATION_CREDENTIALS set GOOGLE_APPLICATION_CREDENTIALS=C:\secure\forest-fire-service-account.json
+if not defined POLL_SECONDS set POLL_SECONDS=60
+set PYTHONUNBUFFERED=1
 
 cd /d "%~dp0"
 if not exist .venv (
