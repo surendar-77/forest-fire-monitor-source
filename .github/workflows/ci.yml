@@ -24,28 +24,36 @@ jobs:
         run: flutter build web --release --dart-define=ENV=dev
 
   backend:
-    name: Functions and security rules
+    name: Backend service
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: functions
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m unittest -v
 
+  rules:
+    name: Security rules
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rules-tests
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: functions/package-lock.json
-
-      # The Firestore emulator used by the rules tests needs Java.
+      # The Firestore emulator needs Java.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
-      - run: npm ci
-      - name: Unit tests
-        run: npm test
-      - name: Security rules tests
-        run: npx --yes firebase-tools@15 emulators:exec --only firestore --project demo-forest-fire "node --test test/rules.test.mjs"
+      - run: npm install --no-audit --no-fund
+      - run: npm test

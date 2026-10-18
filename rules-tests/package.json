@@ -1,0 +1,14 @@
+{
+  "name": "forest-fire-rules-tests",
+  "private": true,
+  "description": "Firestore security rules tests (run against the local emulator; needs Java 11+)",
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-forest-fire \"node --test rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.0.0",
+    "firebase-tools": "^15.0.0"
+  }
+}

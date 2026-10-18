@@ -1,4 +1,5 @@
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
@@ -219,12 +220,30 @@ class _SetRoleDialogState extends State<_SetRoleDialog> {
     });
 
     try {
-      await FirebaseFunctions.instance.httpsCallable('setUserRole').call({
-        'email': email,
-        'role': _role.name,
-      });
+      // The backend service checks the request comes from an admin and
+      // applies it; wait briefly for its answer.
+      final request = await FirebaseFirestore.instance
+          .collection('roleRequests')
+          .add({
+            'email': email,
+            'role': _role.name,
+            'requestedBy': FirebaseAuth.instance.currentUser?.uid,
+            'status': 'pending',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+      final result = await request
+          .snapshots()
+          .map((snapshot) => snapshot.data())
+          .firstWhere((data) => data != null && data['status'] != 'pending')
+          .timeout(const Duration(seconds: 30), onTimeout: () => null);
 
       if (!mounted) {
+        return;
+      }
+
+      if (result != null && result['status'] == 'error') {
+        setState(() => _error = '${result['message'] ?? 'Request failed.'}');
         return;
       }
 
@@ -233,13 +252,14 @@ class _SetRoleDialogState extends State<_SetRoleDialog> {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            '$email is now ${_role.label}. They should tap '
-            '"Refresh my permissions" or sign in again.',
+            result == null
+                ? 'Request saved. It will be applied when the backend '
+                      'service is running.'
+                : '$email is now ${_role.label}. They should tap '
+                      '"Refresh my permissions" or sign in again.',
           ),
         ),
       );
-    } on FirebaseFunctionsException catch (error) {
-      setState(() => _error = error.message ?? error.code);
     } catch (error) {
       setState(() => _error = '$error');
     } finally {

@@ -1,4 +1,4 @@
-// Security rules tests. Run from functions/ with:  npm run test:rules
+// Security rules tests. Run from rules-tests/ with:  npm test
 // (starts the Firestore emulator; needs Java 11+ and firebase-tools).
 
 import { readFileSync } from "node:fs";
@@ -19,7 +19,7 @@ const as = (uid, role) =>
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: "demo-forest-fire",
-    firestore: { rules: readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8") },
+    firestore: { rules: readFileSync(new URL("../firestore.rules", import.meta.url), "utf8") },
   });
 });
 
@@ -177,5 +177,40 @@ describe("profiles and push tokens", () => {
         updatedAt: serverTimestamp(),
       }),
     );
+  });
+});
+
+describe("role requests and backend status", () => {
+  const request = (uid, extra = {}) => ({
+    email: "new.officer@example.org",
+    role: "officer",
+    requestedBy: uid,
+    status: "pending",
+    createdAt: serverTimestamp(),
+    ...extra,
+  });
+
+  test("admins can file a role request as themselves", async () => {
+    await assertSucceeds(setDoc(doc(as("admin1", "admin"), "roleRequests/r1"), request("admin1")));
+  });
+
+  test("officers can't request role changes", async () => {
+    await assertFails(setDoc(doc(as("o1", "officer"), "roleRequests/r1"), request("o1")));
+  });
+
+  test("requests can't be pre-approved or filed for someone else", async () => {
+    const db = as("admin1", "admin");
+    await assertFails(setDoc(doc(db, "roleRequests/r1"), request("admin1", { status: "done" })));
+    await assertFails(setDoc(doc(db, "roleRequests/r2"), request("admin2")));
+    await assertFails(setDoc(doc(db, "roleRequests/r3"), request("admin1", { role: "root" })));
+  });
+
+  test("signed-in users can read the backend heartbeat but not write it", async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      setDoc(doc(ctx.firestore(), "status/backend"), { lastHeartbeat: new Date() }),
+    );
+    const db = as("v1", "viewer");
+    await assertSucceeds(getDoc(doc(db, "status/backend")));
+    await assertFails(setDoc(doc(db, "status/backend"), { lastHeartbeat: new Date() }));
   });
 });

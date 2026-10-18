@@ -1,7 +1,7 @@
 rules_version = '2';
 
-// Roles come from Firebase Auth custom claims set by the setUserRole Cloud
-// Function: viewer (default), officer, admin. Sensor data is written only by
+// Roles come from Firebase Auth custom claims set by the backend service
+// (backend/): viewer (default), officer, admin. Sensor data is written only by
 // the backend (Admin SDK bypasses these rules), never by the app.
 
 service cloud.firestore {
@@ -107,6 +107,26 @@ service cloud.firestore {
         allow create, update: if signedIn() && request.auth.uid == uid
           && request.resource.data.keys().hasOnly(['platform', 'updatedAt']);
       }
+    }
+
+    // ------------------------------------------------------------------
+    // Role changes: admins file a request, the backend service verifies the
+    // requester and applies it (Spark plan has no callable functions).
+    // ------------------------------------------------------------------
+    match /roleRequests/{requestId} {
+      allow read: if isAdmin() && resource.data.requestedBy == request.auth.uid;
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['email', 'role', 'requestedBy', 'status', 'createdAt'])
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.role in ['viewer', 'officer', 'admin']
+        && request.resource.data.email is string;
+    }
+
+    // Backend heartbeat, so the app can warn when the alert service is down.
+    match /status/backend {
+      allow read: if signedIn();
     }
 
     // Backend-only configuration (ThingSpeak channels and read keys).

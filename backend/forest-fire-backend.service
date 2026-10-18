@@ -1,0 +1,25 @@
+# systemd unit for a Raspberry Pi or Linux box (recommended: low power, always on).
+#
+#   sudo cp forest-fire-backend.service /etc/systemd/system/
+#   sudo systemctl enable --now forest-fire-backend
+#   journalctl -u forest-fire-backend -f      # logs
+#
+# Assumes the repo is at /home/pi/forest-fire and a venv at backend/.venv:
+#   cd /home/pi/forest-fire/backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+[Unit]
+Description=Forest Fire Monitor backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/forest-fire/backend
+Environment=GOOGLE_APPLICATION_CREDENTIALS=/home/pi/secure/forest-fire-service-account.json
+Environment=POLL_SECONDS=60
+ExecStart=/home/pi/forest-fire/backend/.venv/bin/python -m forest_fire_backend.service
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

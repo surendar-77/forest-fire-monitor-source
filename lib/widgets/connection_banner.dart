@@ -6,9 +6,9 @@ import 'package:intl/intl.dart';
 
 import '../services/node_repository.dart';
 
-/// Thin banner shown above every tab when the phone is offline or the data
-/// on screen came from the offline cache, so officers never mistake old
-/// readings for live ones.
+/// Thin banner shown above every tab when the phone is offline, the data on
+/// screen came from the offline cache, or the backend alert service has
+/// stopped, so officers never mistake old readings for live ones.
 class ConnectionBanner extends StatefulWidget {
   const ConnectionBanner({super.key, required this.repository});
 
@@ -70,6 +70,16 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
               ? 'Offline: showing saved data'
               : 'Offline: showing data from '
                     '${DateFormat('d MMM HH:mm').format(synced)}';
+        } else if (repository.isBackendDown) {
+          final heartbeat = repository.backendHeartbeat;
+          message = heartbeat == null
+              ? 'Alert service is not running. New readings and push '
+                    'alerts are paused.'
+              : 'Alert service offline since '
+                    '${DateFormat('d MMM HH:mm').format(heartbeat)}. New '
+                    'readings and push alerts are paused.';
+          color = Colors.red.shade700;
+          icon = Icons.notifications_off_outlined;
         } else if (error != null) {
           message = 'Can\'t reach the server. Retrying…';
           color = Colors.red.shade700;

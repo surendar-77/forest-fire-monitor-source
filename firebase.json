@@ -26,33 +26,48 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": ["node_modules", ".git", "test", "scripts", "*.log"],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
-    }
-  ],
   "hosting": {
     "public": "build/web",
-    "ignore": ["firebase.json", "**/.*"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
     "headers": [
       {
         "source": "/firebase-messaging-sw.js",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
       },
       {
         "source": "**/*.@(js|wasm|json)",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
       }
     ]
   },
   "emulators": {
-    "auth": { "port": 9099 },
-    "firestore": { "port": 8081 },
-    "functions": { "port": 5001 },
-    "ui": { "enabled": true }
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8081
+    },
+    "ui": {
+      "enabled": true
+    }
   }
 }

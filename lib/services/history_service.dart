@@ -12,9 +12,10 @@ enum HistoryRange {
   final Duration duration;
   final String label;
 
-  /// Raw readings arrive about once a minute; a week of them is too many
-  /// documents to load, so the week view uses hourly rollups.
-  bool get usesHourlyRollup => this == HistoryRange.week;
+  /// Raw readings arrive about once a minute. Loading a day of them would
+  /// cost up to 1,440 Firestore reads per view, a big share of the free
+  /// plan's 50,000/day, so longer ranges use hourly rollups (24 per day).
+  bool get usesHourlyRollup => this != HistoryRange.hour;
 }
 
 class HistoryService {
@@ -34,9 +35,25 @@ class HistoryService {
           .orderBy('hour')
           .get();
 
-      return snapshot.docs
+      final hourly = snapshot.docs
           .map((doc) => ReadingModel.fromHourly(doc.data()))
           .toList();
+
+      // The backend writes each hour's rollup when the hour ends; fill in
+      // the current hour from raw readings so the chart reaches "now".
+      final now = DateTime.now().toUtc();
+      final hourStart = DateTime.utc(now.year, now.month, now.day, now.hour);
+      final recent = await node
+          .collection('readings')
+          .where('ts', isGreaterThanOrEqualTo: Timestamp.fromDate(hourStart))
+          .orderBy('ts')
+          .limit(120)
+          .get();
+
+      return [
+        ...hourly.where((r) => r.time.isBefore(hourStart)),
+        ...recent.docs.map((doc) => ReadingModel.fromReading(doc.data())),
+      ];
     }
 
     final snapshot = await node

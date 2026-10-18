@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/alert_model.dart';
 import '../models/node_model.dart';
+import '../utils/firestore_parse.dart';
 import 'location_service.dart';
 import 'notification_service.dart';
 
@@ -17,7 +18,9 @@ class NodeRepository extends ChangeNotifier {
     : _firestore = firestore ?? FirebaseFirestore.instance,
       _auth = auth ?? FirebaseAuth.instance;
 
-  static const int alertLimit = 200;
+  /// Newest alerts kept live on screen. Each app start reads up to this many
+  /// documents, so it is kept modest for the free plan's daily read quota.
+  static const int alertLimit = 100;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
@@ -25,6 +28,8 @@ class NodeRepository extends ChangeNotifier {
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _nodesSubscription;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _alertsSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _backendSubscription;
   Timer? _statusTicker;
 
   double _fallbackLatitude = LocationService.defaultLatitude;
@@ -34,6 +39,8 @@ class NodeRepository extends ChangeNotifier {
   List<AlertModel> _alerts = [];
 
   bool _nodesLoaded = false;
+  bool _backendLoaded = false;
+  DateTime? _backendHeartbeat;
   bool _fromCache = false;
   DateTime? _lastSynced;
   Object? _error;
@@ -49,6 +56,24 @@ class NodeRepository extends ChangeNotifier {
   DateTime? get lastSynced => _lastSynced;
 
   Object? get error => _error;
+
+  /// The backend service (backend/) writes a heartbeat every 5 minutes.
+  static const Duration backendDownAfter = Duration(minutes: 15);
+
+  DateTime? get backendHeartbeat => _backendHeartbeat;
+
+  /// True when the service that polls sensors and sends push alerts appears
+  /// to have stopped, so alerts may not arrive.
+  bool get isBackendDown {
+    if (!_backendLoaded) {
+      return false;
+    }
+
+    final heartbeat = _backendHeartbeat;
+
+    return heartbeat == null ||
+        DateTime.now().difference(heartbeat) > backendDownAfter;
+  }
 
   /// Nodes ordered by risk, highest first, then by name.
   List<NodeModel> get nodes {
@@ -92,6 +117,17 @@ class NodeRepository extends ChangeNotifier {
         .snapshots(includeMetadataChanges: true)
         .listen(_handleAlerts, onError: _handleError);
 
+    _backendSubscription = _firestore
+        .doc('status/backend')
+        .snapshots()
+        .listen((snapshot) {
+          _backendLoaded = true;
+          _backendHeartbeat = parseDateTimeOrNull(
+            snapshot.data()?['lastHeartbeat'],
+          );
+          notifyListeners();
+        }, onError: _handleError);
+
     // Node status depends on the clock (lastSeen age), so re-evaluate it
     // periodically even when no new data arrives.
     _statusTicker = Timer.periodic(
@@ -103,11 +139,15 @@ class NodeRepository extends ChangeNotifier {
   Future<void> stop() async {
     await _nodesSubscription?.cancel();
     await _alertsSubscription?.cancel();
+    await _backendSubscription?.cancel();
     _statusTicker?.cancel();
 
     _nodesSubscription = null;
     _alertsSubscription = null;
+    _backendSubscription = null;
     _statusTicker = null;
+    _backendLoaded = false;
+    _backendHeartbeat = null;
 
     _nodes = {};
     _alerts = [];
@@ -215,6 +255,7 @@ class NodeRepository extends ChangeNotifier {
   void dispose() {
     _nodesSubscription?.cancel();
     _alertsSubscription?.cancel();
+    _backendSubscription?.cancel();
     _statusTicker?.cancel();
     super.dispose();
   }

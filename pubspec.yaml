@@ -45,7 +45,6 @@ dependencies:
   http: ^1.6.0
   audioplayers: ^6.8.1
   firebase_auth: ^6.7.0
-  cloud_functions: ^6.5.0
   firebase_crashlytics: ^5.4.0
   fl_chart: ^1.2.0
   intl: ^0.20.3

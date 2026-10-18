@@ -56,9 +56,10 @@ android/key.properties
 .env
 .env.*
 
-# Firebase / Functions
-functions/node_modules/
-functions/lib/
+# Backend service and rules tests
+backend/.venv/
+**/__pycache__/
+rules-tests/node_modules/
 .firebase/
 firebase-debug.log
 firestore-debug.log
