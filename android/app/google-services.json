@@ -1,13 +1,14 @@
 {
   "project_info": {
-    "project_number": "912980577390",
-    "project_id": "forest-fire-monitor-55cf4",
-    "storage_bucket": "forest-fire-monitor-55cf4.firebasestorage.app"
+    "project_number": "436247104577",
+    "firebase_url": "https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "forest-fire-3d2f0",
+    "storage_bucket": "forest-fire-3d2f0.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:912980577390:android:8ae2b6fa95cf99209e6a7f",
+        "mobilesdk_app_id": "1:436247104577:android:434d8de8a126bc120a8ac0",
         "android_client_info": {
           "package_name": "com.example.forest_fire_monitor"
         }
@@ -15,7 +16,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyB0L5OOBlMl-CcTzXbCnbnHTo6xxAssE8U"
+          "current_key": "AIzaSyAMgPqMDeKeY_Vgc5ehmokpZiHvNgqYsX0"
         }
       ],
       "services": {

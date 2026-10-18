@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "forest-fire-monitor-55cf4",
-    "prod": "forest-fire-monitor-55cf4"
+    "default": "forest-fire-3d2f0",
+    "old": "forest-fire-monitor-55cf4"
   }
 }

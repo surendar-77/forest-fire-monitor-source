@@ -7,12 +7,12 @@ importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/12.18.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyBPEkbe30QN8dUM4E657GKUZBfHpZDl9nk',
-  appId: '1:912980577390:web:cd2a4e48c9cb066b9e6a7f',
-  messagingSenderId: '912980577390',
-  projectId: 'forest-fire-monitor-55cf4',
-  authDomain: 'forest-fire-monitor-55cf4.firebaseapp.com',
-  storageBucket: 'forest-fire-monitor-55cf4.firebasestorage.app',
+  apiKey: 'AIzaSyAZzkqPvPAZkBYrEWweK0QY97cX4A5YEMY',
+  appId: '1:436247104577:web:19ba6f550c44ec160a8ac0',
+  messagingSenderId: '436247104577',
+  projectId: 'forest-fire-3d2f0',
+  authDomain: 'forest-fire-3d2f0.firebaseapp.com',
+  storageBucket: 'forest-fire-3d2f0.firebasestorage.app',
 });
 
 // Messages with a `notification` block are shown by the browser

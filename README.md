@@ -112,7 +112,7 @@ cd rules-tests && npm ci && npm test      # rules tests; needs Java 11+
    - Under Rules, paste in `database.rules.json` and click Publish.
    - Register the node and get its secret key (from `backend/`):
      ```sh
-     python -m forest_fire_backend.manage add-device NODE-01 --database-url https://forest-fire-monitor-55cf4-default-rtdb.asia-southeast1.firebasedatabase.app
+     python -m forest_fire_backend.manage add-device NODE-01 --database-url https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app
      ```
    - Paste the printed `NODE_ID`, `NODE_KEY` and `RTDB_URL` lines into
      `ForestFire_S3.ino`, then compile and flash it.

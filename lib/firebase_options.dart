@@ -41,48 +41,51 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBPEkbe30QN8dUM4E657GKUZBfHpZDl9nk',
-    appId: '1:912980577390:web:cd2a4e48c9cb066b9e6a7f',
-    messagingSenderId: '912980577390',
-    projectId: 'forest-fire-monitor-55cf4',
-    authDomain: 'forest-fire-monitor-55cf4.firebaseapp.com',
-    storageBucket: 'forest-fire-monitor-55cf4.firebasestorage.app',
-    measurementId: 'G-HLNRSDWCGP',
+    apiKey: 'AIzaSyAZzkqPvPAZkBYrEWweK0QY97cX4A5YEMY',
+    appId: '1:436247104577:web:19ba6f550c44ec160a8ac0',
+    messagingSenderId: '436247104577',
+    projectId: 'forest-fire-3d2f0',
+    authDomain: 'forest-fire-3d2f0.firebaseapp.com',
+    databaseURL: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'forest-fire-3d2f0.firebasestorage.app',
+    measurementId: 'G-DK4MF2WJS4',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyB0L5OOBlMl-CcTzXbCnbnHTo6xxAssE8U',
-    appId: '1:912980577390:android:8ae2b6fa95cf99209e6a7f',
-    messagingSenderId: '912980577390',
-    projectId: 'forest-fire-monitor-55cf4',
-    storageBucket: 'forest-fire-monitor-55cf4.firebasestorage.app',
+    apiKey: 'AIzaSyAMgPqMDeKeY_Vgc5ehmokpZiHvNgqYsX0',
+    appId: '1:436247104577:android:434d8de8a126bc120a8ac0',
+    messagingSenderId: '436247104577',
+    projectId: 'forest-fire-3d2f0',
+    databaseURL: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'forest-fire-3d2f0.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDSGtjpYPlwzvSIx_Svo1RXbGHx8DtjxJo',
-    appId: '1:912980577390:ios:aa98289846aee41f9e6a7f',
-    messagingSenderId: '912980577390',
-    projectId: 'forest-fire-monitor-55cf4',
-    storageBucket: 'forest-fire-monitor-55cf4.firebasestorage.app',
+    apiKey: 'AIzaSyAITkFsnMH-AFyX4Z59IZw_A7bpCeiLs8w',
+    appId: '1:436247104577:ios:72b4edc4c61d97aa0a8ac0',
+    messagingSenderId: '436247104577',
+    projectId: 'forest-fire-3d2f0',
+    databaseURL: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'forest-fire-3d2f0.firebasestorage.app',
     iosBundleId: 'com.example.forestFireMonitor',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDSGtjpYPlwzvSIx_Svo1RXbGHx8DtjxJo',
-    appId: '1:912980577390:ios:aa98289846aee41f9e6a7f',
-    messagingSenderId: '912980577390',
-    projectId: 'forest-fire-monitor-55cf4',
-    storageBucket: 'forest-fire-monitor-55cf4.firebasestorage.app',
+    apiKey: 'AIzaSyAITkFsnMH-AFyX4Z59IZw_A7bpCeiLs8w',
+    appId: '1:436247104577:ios:72b4edc4c61d97aa0a8ac0',
+    messagingSenderId: '436247104577',
+    projectId: 'forest-fire-3d2f0',
+    databaseURL: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'forest-fire-3d2f0.firebasestorage.app',
     iosBundleId: 'com.example.forestFireMonitor',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBPEkbe30QN8dUM4E657GKUZBfHpZDl9nk',
-    appId: '1:912980577390:web:aeb116c34ade21529e6a7f',
-    messagingSenderId: '912980577390',
-    projectId: 'forest-fire-monitor-55cf4',
-    authDomain: 'forest-fire-monitor-55cf4.firebaseapp.com',
-    storageBucket: 'forest-fire-monitor-55cf4.firebasestorage.app',
-    measurementId: 'G-04GPZ86CBF',
+    apiKey: 'AIzaSyAZzkqPvPAZkBYrEWweK0QY97cX4A5YEMY',
+    appId: '1:436247104577:web:2fec7abc191ee1380a8ac0',
+    messagingSenderId: '436247104577',
+    projectId: 'forest-fire-3d2f0',
+    authDomain: 'forest-fire-3d2f0.firebaseapp.com',
+    databaseURL: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'forest-fire-3d2f0.firebasestorage.app',
+    measurementId: 'G-ZNEXN9FP7B',
   );
 }

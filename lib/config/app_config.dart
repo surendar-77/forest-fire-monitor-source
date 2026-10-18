@@ -43,7 +43,7 @@ class AppConfig {
   static const String realtimeDatabaseUrl = String.fromEnvironment(
     'REALTIME_DB_URL',
     defaultValue:
-        'https://forest-fire-monitor-55cf4-default-rtdb.asia-southeast1.firebasedatabase.app',
+        'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
   );
 
   /// Identifies the app to tile servers, as their usage policies require.
