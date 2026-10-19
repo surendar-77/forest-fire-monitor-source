@@ -118,12 +118,8 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
                 Icon(Icons.circle, size: 10, color: statusColor),
                 const SizedBox(width: 8),
                 Text(
-                  stale ? 'LIVE FEED PAUSED' : 'LIVE',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
-                    letterSpacing: 0.5,
-                  ),
+                  stale ? 'Live feed paused' : 'Live',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
                 if (reading.time != null)
@@ -181,7 +177,7 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
         Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
         Text(
           value == null ? '--' : '${value.toStringAsFixed(digits)}$unit',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         ),
       ],
     );

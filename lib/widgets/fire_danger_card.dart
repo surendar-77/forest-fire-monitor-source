@@ -123,8 +123,8 @@ class FireDangerCard extends StatelessWidget {
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'FIRE DANGER TODAY',
-              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5),
+              'Today',
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
           Container(
@@ -134,8 +134,8 @@ class FireDangerCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              danger.level,
-              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+              '${danger.level[0]}${danger.level.substring(1).toLowerCase()}',
+              style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12),
             ),
           ),
         ],
@@ -146,7 +146,7 @@ class FireDangerCard extends StatelessWidget {
         children: [
           Text(
             '$index',
-            style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: color),
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -299,8 +299,8 @@ class FireDangerCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'IF A FIRE STARTED NOW',
-                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 12),
+                'If a fire started now',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               ),
               const SizedBox(height: 4),
               Text(

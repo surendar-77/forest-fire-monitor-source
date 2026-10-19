@@ -26,37 +26,43 @@ class OverviewStrip extends StatelessWidget {
       if (_order.indexOf(level) > _order.indexOf(highest)) highest = level;
     }
 
-    return Row(
-      children: [
-        _tile(
-          context,
-          icon: Icons.sensors,
-          value: '$online/${nodes.length}',
-          label: 'Nodes online',
-          color: online == nodes.length ? Colors.green : Colors.orange,
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            _tile(
+              context,
+              icon: Icons.sensors,
+              value: '$online/${nodes.length}',
+              label: 'Nodes online',
+              color: online == nodes.length ? Colors.green : Colors.orange,
+            ),
+            _tile(
+              context,
+              icon: Icons.notifications_active,
+              value: '$openAlerts',
+              label: 'Open alerts',
+              color: openAlerts == 0 ? Colors.green : Colors.red,
+            ),
+            _tile(
+              context,
+              icon: Icons.local_fire_department,
+              value: highest,
+              label: 'Highest risk',
+              color: riskColor(highest),
+            ),
+            _tile(
+              context,
+              icon: Icons.satellite_alt,
+              value: '$hotspots',
+              label: 'Satellite fires',
+              color: hotspots == 0 ? Colors.green : Colors.red,
+            ),
+          ],
         ),
-        _tile(
-          context,
-          icon: Icons.notifications_active,
-          value: '$openAlerts',
-          label: 'Open alerts',
-          color: openAlerts == 0 ? Colors.green : Colors.red,
-        ),
-        _tile(
-          context,
-          icon: Icons.local_fire_department,
-          value: highest,
-          label: 'Highest risk',
-          color: riskColor(highest),
-        ),
-        _tile(
-          context,
-          icon: Icons.satellite_alt,
-          value: '$hotspots',
-          label: 'Satellite fires',
-          color: hotspots == 0 ? Colors.green : Colors.red,
-        ),
-      ],
+      ),
     );
   }
 
@@ -68,28 +74,23 @@ class OverviewStrip extends StatelessWidget {
     required Color color,
   }) {
     return Expanded(
-      child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 4),
-              FittedBox(
-                child: Text(
-                  value,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color),
-                ),
-              ),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
-              ),
-            ],
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 6),
+          FittedBox(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
           ),
-        ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+          ),
+        ],
       ),
     );
   }

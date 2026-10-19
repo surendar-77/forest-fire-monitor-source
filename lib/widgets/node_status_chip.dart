@@ -24,13 +24,13 @@ class NodeStatusChip extends StatelessWidget {
   static String labelFor(NodeStatus status) {
     switch (status) {
       case NodeStatus.online:
-        return 'ONLINE';
+        return 'Online';
       case NodeStatus.stale:
-        return 'STALE';
+        return 'Stale';
       case NodeStatus.offline:
-        return 'OFFLINE';
+        return 'Offline';
       case NodeStatus.unknown:
-        return 'WAITING';
+        return 'Waiting';
     }
   }
 
@@ -51,8 +51,8 @@ class NodeStatusChip extends StatelessWidget {
         labelFor(status),
         style: TextStyle(
           color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: compact ? 10 : 12,
+          fontWeight: FontWeight.w600,
+          fontSize: compact ? 11 : 12,
         ),
       ),
     );

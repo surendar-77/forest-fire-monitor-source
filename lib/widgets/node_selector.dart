@@ -41,7 +41,7 @@ class NodeSelector extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 96,
+      height: 84,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: nodes.length,
@@ -60,8 +60,8 @@ class NodeSelector extends StatelessWidget {
                 side: BorderSide(
                   color: selected
                       ? Theme.of(context).colorScheme.primary
-                      : Colors.transparent,
-                  width: 2,
+                      : Theme.of(context).colorScheme.outlineVariant,
+                  width: selected ? 1.5 : 1,
                 ),
               ),
               child: InkWell(
@@ -81,7 +81,7 @@ class NodeSelector extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -90,15 +90,12 @@ class NodeSelector extends StatelessWidget {
                       ),
                       Row(
                         children: [
-                          Icon(Icons.circle, size: 10, color: levelColor),
+                          Icon(Icons.circle, size: 8, color: levelColor),
                           const SizedBox(width: 6),
                           Text(
-                            '${node.detection.riskLevel} · '
+                            '${node.detection.riskLevel[0]}${node.detection.riskLevel.substring(1).toLowerCase()} · '
                             '${node.detection.riskScore}',
-                            style: TextStyle(
-                              color: levelColor,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(fontSize: 13),
                           ),
                         ],
                       ),
