@@ -29,6 +29,10 @@ if ($html -notmatch 'src="flutter_bootstrap\.js"') { throw 'flutter_bootstrap.js
 $html = $html.Replace('src="flutter_bootstrap.js"', ('src="flutter_bootstrap.js?v=' + $buildId + '"'))
 [System.IO.File]::WriteAllText($index, $html)
 
+# Firebase Hosting on the free plan refuses executables; APKs are published
+# from the Cloudflare Worker instead (tool/release_apk.ps1).
+Get-ChildItem build/web -Recurse -Include *.apk,*.exe -ErrorAction SilentlyContinue | Remove-Item -Force
+
 firebase deploy --only hosting --project forest-fire-3d2f0
 if ($LASTEXITCODE -ne 0) { throw 'firebase deploy failed' }
 Write-Host "Published build $buildId to https://forest-fire-3d2f0.web.app"
