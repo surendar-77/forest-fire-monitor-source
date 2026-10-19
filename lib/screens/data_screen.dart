@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -41,7 +42,7 @@ class _DataScreenState extends State<DataScreen> {
         .doc(nodeId)
         .collection('readings')
         .orderBy('ts', descending: true)
-        .limit(40)
+        .limit(120)
         .get()
         .then(
           (s) => s.docs.map((d) => ReadingModel.fromReading(d.data())).toList(),
@@ -231,72 +232,209 @@ class _DataScreenState extends State<DataScreen> {
     ),
   );
 
-  /// The camera AI's latest predictions, newest first.
+  /// The camera AI's predictions as a graph: one dot per saved reading,
+  /// height = confidence, colour = what it saw (Fire / Smoke / Normal).
   Widget _predictionLog() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _section('Camera AI predictions'),
         Card(
-          clipBehavior: Clip.antiAlias,
-          child: FutureBuilder<List<ReadingModel>>(
-            future: _predictions,
-            builder: (context, snap) {
-              final rows = (snap.data ?? const [])
-                  .where((r) => r.aiClass != null)
-                  .toList();
-              if (snap.connectionState != ConnectionState.done) {
-                return const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (rows.isEmpty) {
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Predictions appear here as new readings arrive.',
-                    style: TextStyle(color: Colors.grey.shade600),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+            child: FutureBuilder<List<ReadingModel>>(
+              future: _predictions,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final rows =
+                    (snap.data ?? const [])
+                        .where(
+                          (r) => r.aiClass != null && r.aiConfidence != null,
+                        )
+                        .toList()
+                      ..sort((a, b) => a.time.compareTo(b.time));
+                if (rows.length < 2) {
+                  return SizedBox(
+                    height: 80,
+                    child: Center(
+                      child: Text(
+                        'Predictions appear here as new readings arrive.',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ),
+                  );
+                }
+                return _aiChart(rows);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _aiChart(List<ReadingModel> rows) {
+    final counts = <String, int>{};
+    for (final r in rows) {
+      counts[r.aiClass!] = (counts[r.aiClass!] ?? 0) + 1;
+    }
+    final spots = [
+      for (final r in rows)
+        FlSpot(r.time.millisecondsSinceEpoch.toDouble(), r.aiConfidence! * 100),
+    ];
+    final first = rows.first.time;
+    final last = rows.last.time;
+    final span = last.difference(first);
+    final fmt = span.inHours >= 30 ? DateFormat('d MMM') : DateFormat('HH:mm');
+    final latest = rows.last;
+
+    Widget legend(String c) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: _aiColor(c), shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$c ${counts[c] ?? 0}',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+        ),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              _aiIcon(latest.aiClass),
+              size: 18,
+              color: _aiColor(latest.aiClass),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Latest: ${latest.aiClass} ${(latest.aiConfidence! * 100).round()}% · '
+                '${DateFormat('HH:mm').format(latest.time.toLocal())}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 14,
+          runSpacing: 4,
+          children: [legend('Fire'), legend('Smoke'), legend('Normal')],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 190,
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              maxY: 100,
+              gridData: FlGridData(
+                drawVerticalLine: false,
+                horizontalInterval: 25,
+                getDrawingHorizontalLine: (_) =>
+                    FlLine(color: Colors.grey.shade200, strokeWidth: 1),
+              ),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(),
+                rightTitles: const AxisTitles(),
+                leftTitles: AxisTitles(
+                  axisNameWidget: Text(
+                    'confidence %',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                   ),
-                );
-              }
-              final fmt = DateFormat('d MMM, HH:mm');
-              return Column(
-                children: [
-                  for (final (i, r) in rows.take(15).indexed) ...[
-                    if (i > 0) const Divider(height: 1, indent: 56),
-                    ListTile(
-                      dense: true,
-                      leading: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: _aiColor(r.aiClass)
-                            .withValues(alpha: 0.12),
-                        child: Icon(
-                          _aiIcon(r.aiClass),
-                          size: 18,
-                          color: _aiColor(r.aiClass),
-                        ),
-                      ),
-                      title: Text(
-                        r.aiClass!,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(fmt.format(r.time.toLocal())),
-                      trailing: Text(
-                        r.aiConfidence == null
-                            ? ''
-                            : '${(r.aiConfidence! * 100).round()}%',
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 32,
+                    interval: 25,
+                    getTitlesWidget: (v, meta) => SideTitleWidget(
+                      meta: meta,
+                      child: Text(
+                        v.toStringAsFixed(0),
                         style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: _aiColor(r.aiClass),
+                          fontSize: 10,
+                          color: Colors.grey.shade600,
                         ),
                       ),
                     ),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 24,
+                    interval: (span.inMilliseconds / 4)
+                        .clamp(60000, double.infinity)
+                        .toDouble(),
+                    getTitlesWidget: (v, meta) {
+                      if (v == meta.min || v == meta.max) {
+                        return const SizedBox.shrink();
+                      }
+                      return SideTitleWidget(
+                        meta: meta,
+                        child: Text(
+                          fmt.format(
+                            DateTime.fromMillisecondsSinceEpoch(v.toInt()),
+                          ),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipColor: (_) => Colors.grey.shade900,
+                  getTooltipItems: (touched) => [
+                    for (final t in touched)
+                      LineTooltipItem(
+                        '${rows[t.spotIndex].aiClass} ${t.y.round()}%\n'
+                        '${DateFormat('d MMM HH:mm').format(rows[t.spotIndex].time.toLocal())}',
+                        TextStyle(color: Colors.white, fontSize: 11),
+                      ),
                   ],
-                ],
-              );
-            },
+                ),
+              ),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  color: Colors.grey.shade300,
+                  barWidth: 1,
+                  dotData: FlDotData(
+                    getDotPainter: (spot, _, _, index) => FlDotCirclePainter(
+                      radius: rows[index].aiClass == 'Normal' ? 3 : 5,
+                      color: _aiColor(rows[index].aiClass),
+                      strokeWidth: 1,
+                      strokeColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Last ${rows.length} saved readings (about one a minute).',
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
         ),
       ],
     );
