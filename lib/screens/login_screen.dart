@@ -179,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('SIGN IN'),
+                            : const Text('Sign in'),
                       ),
                       const SizedBox(height: 8),
                       TextButton(

@@ -115,7 +115,7 @@ void main() {
     await _pump(tester, source, UserRole.viewer);
 
     expect(find.textContaining('View-only access'), findsOneWidget);
-    expect(find.text('ACKNOWLEDGE ALERT'), findsNothing);
+    expect(find.text('Acknowledge'), findsNothing);
   });
 
   testWidgets('officers can acknowledge an active alert', (tester) async {
@@ -123,7 +123,7 @@ void main() {
 
     await _pump(tester, source, UserRole.officer);
 
-    final button = find.text('ACKNOWLEDGE ALERT');
+    final button = find.text('Acknowledge');
     await tester.ensureVisible(button);
     await tester.pumpAndSettle();
     await tester.tap(button);
@@ -137,7 +137,7 @@ void main() {
 
     await _pump(tester, source, UserRole.officer);
 
-    await tester.ensureVisible(find.text('RESOLVE INCIDENT'));
-    expect(find.text('ACKNOWLEDGE ALERT'), findsNothing);
+    await tester.ensureVisible(find.text('Resolve'));
+    expect(find.text('Acknowledge'), findsNothing);
   });
 }

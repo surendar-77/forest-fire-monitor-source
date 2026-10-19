@@ -11,7 +11,6 @@ import '../widgets/urgent_alert_dialog.dart';
 import 'alerts_screen.dart';
 import 'dashboard_screen.dart';
 import 'map_screen.dart';
-import 'monitoring_screen.dart';
 import 'settings_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -29,7 +28,11 @@ class _AppShellState extends State<AppShell> {
     repository: widget.repository,
   );
 
-  int _selectedIndex = 0;
+  static const _home = 0;
+  static const _map = 1;
+  static const _alerts = 2;
+
+  int _selectedIndex = _home;
 
   @override
   void initState() {
@@ -65,7 +68,7 @@ class _AppShellState extends State<AppShell> {
     }
 
     setState(() {
-      _selectedIndex = 3;
+      _selectedIndex = _alerts;
     });
   }
 
@@ -90,7 +93,8 @@ class _AppShellState extends State<AppShell> {
       barrierDismissible: false,
       builder: (_) => UrgentAlertDialog(
         alert: alert,
-        nodeName: widget.repository.node(alert.deviceId)?.name ?? alert.deviceId,
+        nodeName:
+            widget.repository.node(alert.deviceId)?.name ?? alert.deviceId,
         canAcknowledge: widget.auth.canRespondToAlerts,
       ),
     );
@@ -112,10 +116,10 @@ class _AppShellState extends State<AppShell> {
             );
           }
         }
-        setState(() => _selectedIndex = 3);
+        setState(() => _selectedIndex = _alerts);
       case UrgentAlertAction.view:
         _dataSourceController.selectNode(alert.deviceId);
-        setState(() => _selectedIndex = 1);
+        setState(() => _selectedIndex = _map);
       case UrgentAlertAction.dismiss:
       case null:
         break;
@@ -126,24 +130,18 @@ class _AppShellState extends State<AppShell> {
     final source = _dataSourceController.source;
 
     switch (index) {
-      case 0:
+      case _home:
         return DashboardScreen(
           controller: _dataSourceController,
           auth: widget.auth,
+          onOpenAlerts: () => setState(() => _selectedIndex = _alerts),
         );
-      case 1:
+      case _map:
         return MapScreen(
           simulationService: source,
           repository: _dataSourceController.isLive ? widget.repository : null,
           selectedNodeId: _dataSourceController.selectedNodeId,
           onNodeSelected: _dataSourceController.selectNode,
-        );
-      case 2:
-        return MonitoringScreen(
-          simulationService: source,
-          simulationController: _dataSourceController.isSimulation
-              ? _dataSourceController.simulationService
-              : null,
         );
       default:
         return AlertsScreen(
@@ -154,12 +152,7 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  final List<String> _titles = const [
-    'Forest Fire Monitor',
-    'Live Map',
-    'Monitoring',
-    'Alerts',
-  ];
+  final List<String> _titles = const ['Forest Fire Monitor', 'Map', 'Alerts'];
 
   @override
   void dispose() {
@@ -221,19 +214,14 @@ class _AppShellState extends State<AppShell> {
             },
             destinations: [
               const NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: 'Dashboard',
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home),
+                label: 'Home',
               ),
               const NavigationDestination(
                 icon: Icon(Icons.map_outlined),
                 selectedIcon: Icon(Icons.map),
                 label: 'Map',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.monitor_heart_outlined),
-                selectedIcon: Icon(Icons.monitor_heart),
-                label: 'Monitor',
               ),
               NavigationDestination(
                 icon: Badge(
@@ -266,7 +254,7 @@ class _AppShellState extends State<AppShell> {
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Simulation: demo data on this device only. '
+                'Demo mode: practice data on this phone only. '
                 'No real alerts are sent.',
                 style: TextStyle(
                   color: Colors.white,
@@ -283,7 +271,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _dataSourceMenu(BuildContext context) {
     return PopupMenuButton<DataSourceMode>(
-      tooltip: 'Data Source',
+      tooltip: 'Real sensors or demo mode',
       icon: Icon(
         _dataSourceController.isSimulation
             ? Icons.science_outlined
@@ -301,14 +289,14 @@ class _AppShellState extends State<AppShell> {
           context,
           DataSourceMode.live,
           Icons.cloud_done_outlined,
-          'Live Data',
+          'Real sensors',
           _dataSourceController.isLive,
         ),
         _modeItem(
           context,
           DataSourceMode.simulation,
           Icons.science_outlined,
-          'Simulation',
+          'Demo mode',
           _dataSourceController.isSimulation,
         ),
       ],
@@ -326,7 +314,10 @@ class _AppShellState extends State<AppShell> {
       value: mode,
       child: Row(
         children: [
-          Icon(icon, color: selected ? Theme.of(context).colorScheme.primary : null),
+          Icon(
+            icon,
+            color: selected ? Theme.of(context).colorScheme.primary : null,
+          ),
           const SizedBox(width: 12),
           Text(label),
           if (selected) ...[const Spacer(), const Icon(Icons.check)],

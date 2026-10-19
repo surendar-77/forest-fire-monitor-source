@@ -6,6 +6,7 @@ import '../services/monitoring_data_source.dart';
 import '../services/node_repository.dart';
 import '../services/notification_service.dart';
 import '../services/report_export_service.dart';
+import '../utils/friendly.dart';
 
 const List<String> _severities = ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
 
@@ -31,6 +32,7 @@ class AlertsScreen extends StatefulWidget {
 class _AlertsScreenState extends State<AlertsScreen> {
   String? _nodeFilter;
   String? _severityFilter;
+  bool _showResolved = false;
 
   MonitoringDataSource get simulationService => widget.simulationService;
 
@@ -42,6 +44,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
         ? repository.alerts
         : simulationService.alertHistory;
   }
+
+  String _sensorName(String id) => widget.repository?.node(id)?.name ?? id;
 
   bool _matchesFilters(AlertModel alert) {
     return (_nodeFilter == null || alert.deviceId == _nodeFilter) &&
@@ -59,7 +63,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
       } else {
         await simulationService.acknowledgeAlert(alert.id);
       }
-    }, 'Alert acknowledged.');
+    }, 'Marked as being handled.');
   }
 
   Future<void> _resolve(AlertModel alert) async {
@@ -77,11 +81,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
       final repository = widget.repository;
 
       if (repository != null) {
-        await repository.resolveIncident(alert.id, notes: notes, outcome: outcome);
+        await repository.resolveIncident(
+          alert.id,
+          notes: notes,
+          outcome: outcome,
+        );
       } else {
         await simulationService.resolveIncident(alert.id);
       }
-    }, 'Incident resolved.');
+    }, 'Alert resolved.');
   }
 
   Future<void> _runAction(Future<void> Function() action, String done) async {
@@ -96,8 +104,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
         SnackBar(
           content: Text(
             denied
-                ? 'You don\'t have permission to do that.'
-                : 'Action failed: $error',
+                ? "You don't have permission to do that."
+                : 'Something went wrong: $error',
           ),
         ),
       );
@@ -138,15 +146,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
       builder: (context, child) {
         final all = _allAlerts;
         final filtered = all.where(_matchesFilters).toList();
-
-        final activeAlerts = filtered.where((alert) => alert.isOpen).toList();
-
-        final history = filtered
+        final open = filtered.where((alert) => alert.isOpen).toList();
+        final resolved = filtered
             .where((alert) => alert.status == AlertStatus.resolved)
             .toList();
-
         final nodeIds = {for (final alert in all) alert.deviceId}.toList()
           ..sort();
+        final shown = _showResolved ? resolved : open;
 
         return RefreshIndicator(
           onRefresh: () async {
@@ -155,30 +161,26 @@ class _AlertsScreenState extends State<AlertsScreen> {
             await Future<void>.delayed(const Duration(milliseconds: 300));
           },
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
             children: [
-              _summaryCard(activeCount: activeAlerts.length),
-
-              if (history.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _outcomeStats(history),
-              ],
-
+              _header(open.length),
               const SizedBox(height: 14),
-
-              _filterBar(nodeIds, filtered),
-
+              _tabs(open.length, resolved.length),
+              const SizedBox(height: 10),
+              _filters(nodeIds, filtered),
               if (!_canRespond) ...[
                 const SizedBox(height: 10),
                 Row(
                   children: [
-                    Icon(Icons.visibility_outlined,
-                        size: 16, color: Colors.grey.shade600),
+                    Icon(
+                      Icons.visibility_outlined,
+                      size: 16,
+                      color: Colors.grey.shade600,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'View-only access. Officers acknowledge and resolve '
-                        'alerts.',
+                        'View-only access. Officers acknowledge and resolve alerts.',
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 12,
@@ -188,63 +190,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ],
                 ),
               ],
-
-              const SizedBox(height: 20),
-
-              // ==========================================
-              // ACTIVE ALERTS
-              // ==========================================
-              const Text(
-                'Active Alerts',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 10),
-
-              if (activeAlerts.isEmpty)
-                _emptyActiveCard()
-              else
-                ...activeAlerts.map(
-                  (alert) => Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: _activeAlertCard(context, alert),
-                  ),
-                ),
-
               const SizedBox(height: 12),
-
-              // ==========================================
-              // ALERT HISTORY
-              // ==========================================
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Alert History',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${history.length} incidents',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 10),
-
-              if (history.isEmpty)
-                _emptyHistoryCard()
+              if (_showResolved && resolved.isNotEmpty) ...[
+                _outcomeSummary(resolved),
+                const SizedBox(height: 8),
+              ],
+              if (shown.isEmpty)
+                _empty()
               else
-                ...history.map(
-                  (alert) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _historyCard(context, alert),
-                  ),
-                ),
+                for (final alert in shown) _alertTile(alert),
             ],
           ),
         );
@@ -252,401 +206,191 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
-  // ==================================================
-  // OUTCOME STATS (false-alarm rate)
-  // ==================================================
-
-  Widget _outcomeStats(List<AlertModel> resolved) {
-    final recorded = resolved.where((a) => a.outcome != null).toList();
-    final counts = {
-      for (final o in AlertOutcome.all) o: recorded.where((a) => a.outcome == o).length,
-    };
-    final falseAlarms = counts[AlertOutcome.falseAlarm] ?? 0;
-    final rate = recorded.isEmpty ? null : (falseAlarms * 100 / recorded.length).round();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              rate == null
-                  ? 'No outcomes recorded yet'
-                  : 'False-alarm rate: $rate% of ${recorded.length} recorded',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                for (final o in AlertOutcome.all)
-                  Text(
-                    '${AlertOutcome.label(o)}: ${counts[o]}',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
-                  ),
-                if (resolved.length > recorded.length)
-                  Text(
-                    'Not recorded: ${resolved.length - recorded.length}',
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==================================================
-  // FILTERS
-  // ==================================================
-
-  Widget _filterBar(List<String> nodeIds, List<AlertModel> filtered) {
+  Widget _header(int openCount) {
+    final clear = openCount == 0;
+    final color = clear ? Colors.green.shade700 : Colors.red.shade700;
     return Row(
       children: [
-        if (widget.repository != null) ...[
-          Expanded(
-            child: DropdownButtonFormField<String?>(
-              initialValue: _nodeFilter,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Node',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('All nodes')),
-                for (final id in nodeIds)
-                  DropdownMenuItem(value: id, child: Text(id)),
-              ],
-              onChanged: (value) => setState(() => _nodeFilter = value),
-            ),
+        CircleAvatar(
+          radius: 22,
+          backgroundColor: color.withValues(alpha: 0.10),
+          child: Icon(
+            clear ? Icons.check : Icons.notifications_active_outlined,
+            color: color,
           ),
-          const SizedBox(width: 10),
-        ],
+        ),
+        const SizedBox(width: 12),
         Expanded(
-          child: DropdownButtonFormField<String?>(
-            initialValue: _severityFilter,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Severity',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('All')),
-              for (final severity in _severities)
-                DropdownMenuItem(value: severity, child: Text(severity)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                clear
+                    ? 'Nothing needs attention'
+                    : '$openCount alert${openCount == 1 ? '' : 's'} need${openCount == 1 ? 's' : ''} attention',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                clear
+                    ? 'You will be notified the moment something happens.'
+                    : 'Newest first. Tap an alert for details.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
             ],
-            onChanged: (value) => setState(() => _severityFilter = value),
           ),
         ),
         if (_canRespond)
           PopupMenuButton<bool>(
-            tooltip: 'Export report',
-            icon: const Icon(Icons.download),
-            onSelected: (pdf) => _export(pdf, filtered),
+            tooltip: 'Download report',
+            icon: const Icon(Icons.download_outlined),
+            onSelected: (pdf) =>
+                _export(pdf, _allAlerts.where(_matchesFilters).toList()),
             itemBuilder: (context) => const [
-              PopupMenuItem(value: false, child: Text('Export CSV')),
-              PopupMenuItem(value: true, child: Text('Export PDF')),
+              PopupMenuItem(value: true, child: Text('Download PDF report')),
+              PopupMenuItem(
+                value: false,
+                child: Text('Download spreadsheet (CSV)'),
+              ),
             ],
           ),
       ],
     );
   }
 
-  // ==================================================
-  // SUMMARY CARD
-  // ==================================================
-
-  Widget _summaryCard({required int activeCount}) {
-    final hasAlerts = activeCount > 0;
-
-    return Card(
-      elevation: 2,
-      color: hasAlerts
-          ? Colors.red.withValues(alpha: 0.06)
-          : Colors.green.withValues(alpha: 0.06),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: hasAlerts
-                    ? Colors.red.withValues(alpha: 0.10)
-                    : Colors.green.withValues(alpha: 0.10),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                hasAlerts ? Icons.warning_amber_rounded : Icons.check_circle,
-                color: hasAlerts ? Colors.red : Colors.green,
-                size: 30,
-              ),
-            ),
-
-            const SizedBox(width: 16),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    hasAlerts
-                        ? '$activeCount ACTIVE '
-                              'ALERT${activeCount == 1 ? '' : 'S'}'
-                        : 'SYSTEM NORMAL',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: hasAlerts ? Colors.red : Colors.green,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    hasAlerts
-                        ? 'Fire incidents require attention.'
-                        : 'No active fire incidents detected.',
-                    style: TextStyle(color: Colors.grey.shade700),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget _tabs(int openCount, int resolvedCount) {
+    return SegmentedButton<bool>(
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(value: false, label: Text('Open ($openCount)')),
+        ButtonSegment(value: true, label: Text('Resolved ($resolvedCount)')),
+      ],
+      selected: {_showResolved},
+      onSelectionChanged: (value) =>
+          setState(() => _showResolved = value.first),
     );
   }
 
-  // ==================================================
-  // EMPTY ACTIVE ALERTS
-  // ==================================================
-
-  Widget _emptyActiveCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          children: [
-            Icon(Icons.shield_outlined, size: 48, color: Colors.green.shade600),
-            const SizedBox(height: 12),
-            const Text(
-              'No Active Alerts',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              'The monitoring system is currently normal.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==================================================
-  // ACTIVE ALERT CARD
-  // ==================================================
-
-  Widget _activeAlertCard(BuildContext context, AlertModel alert) {
-    final color = _severityColor(alert.severity);
-
-    final isSmoke = alert.type == 'SMOKE DETECTED';
-
-    return Card(
-      elevation: 3,
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ------------------------------------------
-            // HEADER
-            // ------------------------------------------
-
-            Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.10),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isSmoke ? Icons.cloud : Icons.local_fire_department,
-                    color: color,
-                    size: 28,
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                Expanded(
-                  child: Text(
-                    '${alert.severity} ALERT',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                ),
-
-                _statusChip(alert.status),
+  Widget _filters(List<String> nodeIds, List<AlertModel> filtered) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          if (widget.repository != null && nodeIds.length > 1) ...[
+            PopupMenuButton<String?>(
+              tooltip: 'Filter by sensor',
+              onSelected: (value) => setState(() => _nodeFilter = value),
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: null, child: Text('All sensors')),
+                for (final id in nodeIds)
+                  PopupMenuItem(value: id, child: Text(_sensorName(id))),
               ],
-            ),
-
-            const SizedBox(height: 18),
-
-            // ------------------------------------------
-            // DETAILS
-            // ------------------------------------------
-            _detailRow('Alert Type', alert.type),
-
-            _detailRow(
-              'Fire Probability',
-              '${alert.fireProbability.toStringAsFixed(0)}%',
-            ),
-
-            _detailRow(
-              'Smoke Probability',
-              '${alert.smokeProbability.toStringAsFixed(0)}%',
-            ),
-
-            _detailRow(
-              'Temperature',
-              '${alert.temperature.toStringAsFixed(1)}°C',
-            ),
-
-            _detailRow('Humidity', '${alert.humidity.toStringAsFixed(0)}%'),
-
-            _detailRow('Monitoring Node', alert.deviceId),
-
-            _detailRow(
-              'Location',
-              '${alert.latitude.toStringAsFixed(4)}° N, '
-                  '${alert.longitude.toStringAsFixed(4)}° E',
-            ),
-
-            _detailRow('Detected', _formatTime(alert.detectedAt)),
-
-            if (alert.acknowledgedBy != null || alert.acknowledgedAt != null)
-              _detailRow(
-                'Acknowledged',
-                [
-                  alert.acknowledgedBy,
-                  if (alert.acknowledgedAt != null)
-                    _formatTime(alert.acknowledgedAt!),
-                ].whereType<String>().join(' · '),
-              ),
-
-            const SizedBox(height: 12),
-
-            // ------------------------------------------
-            // ACTION
-            // ------------------------------------------
-            if (_canRespond && alert.status == AlertStatus.active)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _acknowledge(alert),
-                  icon: const Icon(Icons.check),
-                  label: const Text('ACKNOWLEDGE ALERT'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
+              child: Chip(
+                avatar: const Icon(Icons.sensors, size: 16),
+                label: Text(
+                  _nodeFilter == null
+                      ? 'All sensors'
+                      : _sensorName(_nodeFilter!),
                 ),
               ),
-
-            if (_canRespond && alert.status == AlertStatus.acknowledged)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _resolve(alert),
-                  icon: const Icon(Icons.done_all),
-                  label: const Text('RESOLVE INCIDENT'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                ),
-              ),
+            ),
+            const SizedBox(width: 8),
           ],
-        ),
+          FilterChip(
+            label: const Text('Any level'),
+            selected: _severityFilter == null,
+            onSelected: (_) => setState(() => _severityFilter = null),
+          ),
+          for (final severity in _severities) ...[
+            const SizedBox(width: 6),
+            FilterChip(
+              label: Text(levelLabel(severity)),
+              selected: _severityFilter == severity,
+              onSelected: (selected) =>
+                  setState(() => _severityFilter = selected ? severity : null),
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  // ==================================================
-  // HISTORY CARD
-  // ==================================================
-
-  Widget _historyCard(BuildContext context, AlertModel alert) {
-    final color = _severityColor(alert.severity);
-
-    final isSmoke = alert.type == 'SMOKE DETECTED';
+  Widget _alertTile(AlertModel alert) {
+    final color = severityColor(alert.severity);
+    final canAck = _canRespond && alert.status == AlertStatus.active;
+    final canResolve = _canRespond && alert.status == AlertStatus.acknowledged;
 
     return Card(
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          _showHistoryDetails(context, alert);
-        },
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _showDetails(alert),
         child: Padding(
-          padding: const EdgeInsets.all(15),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.10),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isSmoke ? Icons.cloud : Icons.local_fire_department,
-                  color: color,
-                  size: 24,
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${alert.severity} • '
-                      '${alert.type}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: color.withValues(alpha: 0.10),
+                    child: Icon(alertIcon(alert.type), color: color, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          alertTitle(alert.type),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_sensorName(alert.deviceId)} · ${timeAgo(alert.detectedAt)}',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatDateTime(alert.detectedAt),
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Pill(
+                    alertStatusLabel(alert.status),
+                    color: alertStatusColor(alert.status),
+                  ),
+                ],
+              ),
+              if (canAck || canResolve) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const SizedBox(width: 52),
+                    Expanded(
+                      child: canAck
+                          ? FilledButton.tonalIcon(
+                              onPressed: () => _acknowledge(alert),
+                              icon: const Icon(Icons.directions_run, size: 18),
+                              label: const Text('Acknowledge'),
+                            )
+                          : FilledButton.tonalIcon(
+                              onPressed: () => _resolve(alert),
+                              icon: const Icon(Icons.task_alt, size: 18),
+                              label: const Text('Resolve'),
+                            ),
                     ),
                   ],
                 ),
-              ),
-
-              _statusChip(alert.status),
-
-              const SizedBox(width: 4),
-
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              ],
             ],
           ),
         ),
@@ -654,94 +398,162 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
-  // ==================================================
-  // HISTORY DETAILS
-  // ==================================================
+  Widget _outcomeSummary(List<AlertModel> resolved) {
+    final recorded = resolved.where((a) => a.outcome != null).toList();
+    if (recorded.isEmpty) return const SizedBox.shrink();
+    final falseAlarms = recorded
+        .where((a) => a.outcome == AlertOutcome.falseAlarm)
+        .length;
+    final confirmed = recorded
+        .where((a) => a.outcome == AlertOutcome.confirmedFire)
+        .length;
+    return Text(
+      '$confirmed confirmed fire${confirmed == 1 ? '' : 's'} · '
+      '${(falseAlarms * 100 / recorded.length).round()}% false alarms '
+      '(of ${recorded.length} with a recorded outcome)',
+      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+    );
+  }
 
-  void _showHistoryDetails(BuildContext context, AlertModel alert) {
-    showDialog(
+  Widget _empty() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: Column(
+        children: [
+          Icon(
+            _showResolved ? Icons.history : Icons.verified_outlined,
+            size: 44,
+            color: _showResolved ? Colors.grey.shade400 : Colors.green.shade600,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _showResolved ? 'No resolved alerts yet' : 'No open alerts',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _showResolved
+                ? 'Resolved alerts will be listed here.'
+                : 'All sensors are quiet.',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDetails(AlertModel alert) {
+    final color = severityColor(alert.severity);
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
       builder: (context) {
-        return AlertDialog(
-          title: Text('${alert.severity} ALERT'),
-          content: SingleChildScrollView(
+        final canAck = _canRespond && alert.status == AlertStatus.active;
+        final canResolve =
+            _canRespond && alert.status == AlertStatus.acknowledged;
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _dialogRow('Type', alert.type),
-                _dialogRow(
-                  'Fire',
-                  '${alert.fireProbability.toStringAsFixed(0)}%',
+                Row(
+                  children: [
+                    Icon(alertIcon(alert.type), color: color, size: 28),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        alertTitle(alert.type),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                _dialogRow(
-                  'Smoke',
-                  '${alert.smokeProbability.toStringAsFixed(0)}%',
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    Pill(
+                      alertStatusLabel(alert.status),
+                      color: alertStatusColor(alert.status),
+                    ),
+                    Pill('${levelLabel(alert.severity)} level', color: color),
+                  ],
                 ),
-                _dialogRow(
-                  'Temperature',
-                  '${alert.temperature.toStringAsFixed(1)}°C',
+                const SizedBox(height: 16),
+                _row('Sensor', _sensorName(alert.deviceId)),
+                _row(
+                  'When',
+                  '${timeAgo(alert.detectedAt)} (${_dateTime(alert.detectedAt)})',
                 ),
-                _dialogRow('Humidity', '${alert.humidity.toStringAsFixed(0)}%'),
-                _dialogRow('Node', alert.deviceId),
-                _dialogRow('Latitude', alert.latitude.toStringAsFixed(6)),
-                _dialogRow('Longitude', alert.longitude.toStringAsFixed(6)),
-                _dialogRow('Detected', _formatDateTime(alert.detectedAt)),
+                _row(
+                  'Camera',
+                  'fire ${alert.fireProbability.toStringAsFixed(0)}% · smoke ${alert.smokeProbability.toStringAsFixed(0)}%',
+                ),
+                _row(
+                  'Weather at sensor',
+                  '${alert.temperature.toStringAsFixed(1)}°C · ${alert.humidity.toStringAsFixed(0)}% humidity',
+                ),
+                _row(
+                  'Location',
+                  '${alert.latitude.toStringAsFixed(4)}, ${alert.longitude.toStringAsFixed(4)}',
+                ),
                 if (alert.acknowledgedAt != null)
-                  _dialogRow(
-                    'Acknowledged',
-                    '${_formatDateTime(alert.acknowledgedAt!)}'
-                        '${alert.acknowledgedBy == null ? '' : '\nby ${alert.acknowledgedBy}'}',
+                  _row(
+                    'Handled by',
+                    '${alert.acknowledgedBy ?? 'Unknown'} · ${_dateTime(alert.acknowledgedAt!)}',
                   ),
                 if (alert.resolvedAt != null)
-                  _dialogRow(
-                    'Resolved',
-                    '${_formatDateTime(alert.resolvedAt!)}'
-                        '${alert.resolvedBy == null ? '' : '\nby ${alert.resolvedBy}'}',
+                  _row(
+                    'Resolved by',
+                    '${alert.resolvedBy ?? 'Unknown'} · ${_dateTime(alert.resolvedAt!)}',
                   ),
                 if (alert.outcome != null)
-                  _dialogRow('Outcome', AlertOutcome.label(alert.outcome)),
-                if (alert.notes != null) _dialogRow('Notes', alert.notes!),
-                _dialogRow('Status', alert.status),
+                  _row('What it was', AlertOutcome.label(alert.outcome)),
+                if (alert.notes != null && alert.notes!.isNotEmpty)
+                  _row('Notes', alert.notes!),
+                if (canAck || canResolve) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        canAck ? _acknowledge(alert) : _resolve(alert);
+                      },
+                      child: Text(
+                        canAck ? "Acknowledge (I'm handling it)" : 'Resolve',
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('CLOSE'),
-            ),
-          ],
         );
       },
     );
   }
 
-  // ==================================================
-  // DETAIL ROW
-  // ==================================================
-
-  Widget _detailRow(String title, String value) {
+  Widget _row(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 5,
-            child: Text(
-              title,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-            ),
+          SizedBox(
+            width: 130,
+            child: Text(label, style: TextStyle(color: Colors.grey.shade600)),
           ),
-          const SizedBox(width: 10),
           Expanded(
-            flex: 6,
             child: Text(
               value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -749,126 +561,10 @@ class _AlertsScreenState extends State<AlertsScreen> {
     );
   }
 
-  Widget _dialogRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(title, style: const TextStyle(color: Colors.grey)),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ==================================================
-  // STATUS CHIP
-  // ==================================================
-
-  Widget _statusChip(String status) {
-    final isResolved = status == 'RESOLVED';
-
-    final isAcknowledged = status == 'ACKNOWLEDGED';
-
-    final color = isResolved
-        ? Colors.green
-        : isAcknowledged
-        ? Colors.orange
-        : Colors.red;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 11,
-        ),
-      ),
-    );
-  }
-
-  // ==================================================
-  // EMPTY HISTORY
-  // ==================================================
-
-  Widget _emptyHistoryCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Row(
-          children: [
-            Icon(Icons.history, color: Colors.grey.shade500),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'No resolved incidents yet.',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==================================================
-  // SEVERITY COLOR
-  // ==================================================
-
-  Color _severityColor(String severity) {
-    switch (severity) {
-      case 'CRITICAL':
-        return Colors.red;
-      case 'HIGH':
-        return Colors.deepOrange;
-      case 'MODERATE':
-        return Colors.orange;
-      case 'LOW':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  // ==================================================
-  // DATE / TIME
-  // ==================================================
-
-  String _formatTime(DateTime dateTime) {
-    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
-
-    final minute = dateTime.minute.toString().padLeft(2, '0');
-
-    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
-
-    return '$hour:$minute $period';
-  }
-
-  String _formatDateTime(DateTime dateTime) {
-    final day = dateTime.day.toString().padLeft(2, '0');
-
-    final month = dateTime.month.toString().padLeft(2, '0');
-
-    final year = dateTime.year.toString();
-
-    return '$day/$month/$year • '
-        '${_formatTime(dateTime)}';
+  String _dateTime(DateTime t) {
+    final day = t.day.toString().padLeft(2, '0');
+    final month = t.month.toString().padLeft(2, '0');
+    return '$day/$month/${t.year}, ${clockTime(t)}';
   }
 }
 
@@ -892,7 +588,7 @@ class _ResolveDialogState extends State<_ResolveDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Resolve incident'),
+      title: const Text('Resolve alert'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -900,12 +596,11 @@ class _ResolveDialogState extends State<_ResolveDialog> {
           children: [
             const Text(
               'What was it?',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(
-              'Recorded outcomes measure false alarms and train the '
-              'detection model.',
+              'This helps measure false alarms and improve detection.',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
             const SizedBox(height: 8),
@@ -924,11 +619,10 @@ class _ResolveDialogState extends State<_ResolveDialog> {
             const SizedBox(height: 14),
             TextField(
               controller: _notesController,
-              maxLines: 4,
+              maxLines: 3,
               decoration: const InputDecoration(
-                labelText: 'Field notes (optional)',
-                hintText: 'What was found, action taken, area affected...',
-                border: OutlineInputBorder(),
+                labelText: 'Notes (optional)',
+                hintText: 'What you found, action taken, area affected',
               ),
             ),
           ],
@@ -937,13 +631,14 @@ class _ResolveDialogState extends State<_ResolveDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('CANCEL'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
           onPressed: _outcome == null
               ? null
-              : () => Navigator.pop(context, (_outcome!, _notesController.text)),
-          child: const Text('RESOLVE'),
+              : () =>
+                    Navigator.pop(context, (_outcome!, _notesController.text)),
+          child: const Text('Resolve'),
         ),
       ],
     );

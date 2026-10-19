@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/friendly.dart';
+
 import '../models/alert_model.dart';
 
 enum UrgentAlertAction { acknowledge, view, dismiss }
@@ -17,20 +19,7 @@ class UrgentAlertDialog extends StatelessWidget {
   final String nodeName;
   final bool canAcknowledge;
 
-  String get _headline {
-    switch (alert.type) {
-      case 'FIRE':
-        return 'FIRE DETECTED';
-      case 'SMOKE':
-        return 'SMOKE DETECTED';
-      case 'SENSOR_ANOMALY':
-        return 'SMOKE / HEAT ANOMALY';
-      case 'NODE_OFFLINE':
-        return 'NODE OFFLINE';
-      default:
-        return 'FIRE ALERT';
-    }
-  }
+  String get _headline => alertTitle(alert.type);
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +48,7 @@ class UrgentAlertDialog extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '${alert.severity} · $nodeName (${alert.deviceId})',
+                '${levelLabel(alert.severity)} level · $nodeName',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
@@ -86,7 +75,7 @@ class UrgentAlertDialog extends StatelessWidget {
                     ),
                     onPressed: () => Navigator.pop(context, UrgentAlertAction.acknowledge),
                     icon: const Icon(Icons.check),
-                    label: const Text('ACKNOWLEDGE', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text("Acknowledge (I'm handling it)", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               const SizedBox(height: 10),
@@ -100,7 +89,7 @@ class UrgentAlertDialog extends StatelessWidget {
                   ),
                   onPressed: () => Navigator.pop(context, UrgentAlertAction.view),
                   icon: const Icon(Icons.map_outlined),
-                  label: const Text('VIEW ON MAP / ALERTS'),
+                  label: const Text('Show on map'),
                 ),
               ),
               TextButton(

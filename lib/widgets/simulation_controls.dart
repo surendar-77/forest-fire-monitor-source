@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/simulation_service.dart';
 
+/// Demo scenarios: tap one to see how the app reacts.
 class SimulationControls extends StatelessWidget {
   final SimulationService simulationService;
 
@@ -9,96 +10,33 @@ class SimulationControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _simulationButton(
-          icon: Icons.check_circle,
-          title: 'NORMAL',
-          subtitle: 'Safe environmental conditions',
-          onPressed: simulationService.normal,
-        ),
-
-        const SizedBox(height: 10),
-
-        _simulationButton(
-          icon: Icons.cloud,
-          title: 'SMOKE DETECTED',
-          subtitle: 'Smoke detected by AI',
-          onPressed: simulationService.smokeDetected,
-        ),
-
-        const SizedBox(height: 10),
-
-        _simulationButton(
-          icon: Icons.warning_amber_rounded,
-          title: 'HIGH FIRE RISK',
-          subtitle: 'High probability of fire',
-          onPressed: simulationService.highFireRisk,
-        ),
-
-        const SizedBox(height: 10),
-
-        _simulationButton(
-          icon: Icons.local_fire_department,
-          title: 'CRITICAL FIRE',
-          subtitle: 'Immediate fire alert',
-          onPressed: simulationService.criticalFire,
-        ),
-      ],
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          _scenario(Icons.check_circle_outline, Colors.green.shade700, 'Normal day',
+              'Everything is fine', simulationService.normal),
+          const Divider(height: 1, indent: 56),
+          _scenario(Icons.cloud_outlined, Colors.orange.shade800, 'Smoke seen',
+              'The camera spots smoke', simulationService.smokeDetected),
+          const Divider(height: 1, indent: 56),
+          _scenario(Icons.warning_amber_rounded, Colors.deepOrange, 'High fire risk',
+              'Hot, dry readings point to fire', simulationService.highFireRisk),
+          const Divider(height: 1, indent: 56),
+          _scenario(Icons.local_fire_department, Colors.red.shade700, 'Fire!',
+              'The camera spots flames', simulationService.criticalFire),
+        ],
+      ),
     );
   }
 
-  Widget _simulationButton({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onPressed,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onPressed,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(icon, size: 30),
-
-                const SizedBox(width: 14),
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
-
-                      const SizedBox(height: 4),
-
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Icon(Icons.play_arrow, size: 22),
-              ],
-            ),
-          ),
-        ),
-      ),
+  Widget _scenario(IconData icon, Color color, String title, String subtitle, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: color),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.play_arrow_rounded),
+      onTap: onTap,
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/node_model.dart';
 import '../services/node_repository.dart';
+import '../utils/friendly.dart';
 import '../utils/risk_utils.dart';
 
 /// Headline figures across all nodes, like an incident liveboard: what an
@@ -36,7 +37,7 @@ class OverviewStrip extends StatelessWidget {
               context,
               icon: Icons.sensors,
               value: '$online/${nodes.length}',
-              label: 'Nodes online',
+              label: 'Sensors online',
               color: online == nodes.length ? Colors.green : Colors.orange,
             ),
             _tile(
@@ -49,7 +50,7 @@ class OverviewStrip extends StatelessWidget {
             _tile(
               context,
               icon: Icons.local_fire_department,
-              value: highest,
+              value: levelLabel(highest),
               label: 'Highest risk',
               color: riskColor(highest),
             ),

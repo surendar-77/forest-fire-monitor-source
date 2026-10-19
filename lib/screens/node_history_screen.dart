@@ -53,7 +53,7 @@ class _NodeHistoryScreenState extends State<NodeHistoryScreen> {
 
     if (alerts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No alerts to export for this node.')),
+        const SnackBar(content: Text('No alerts to export for this sensor.')),
       );
       return;
     }

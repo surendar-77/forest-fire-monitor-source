@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/node_model.dart';
-import '../utils/risk_utils.dart';
+import '../models/alert_model.dart';
+import '../utils/friendly.dart';
+import '../widgets/simulation_controls.dart';
 import '../widgets/fire_danger_card.dart';
 import '../widgets/live_feed_card.dart';
 import '../widgets/node_selector.dart';
@@ -19,10 +21,14 @@ class DashboardScreen extends StatefulWidget {
   final DataSourceController controller;
   final AuthService auth;
 
+  /// Switches the app to the Alerts tab.
+  final VoidCallback? onOpenAlerts;
+
   const DashboardScreen({
     super.key,
     required this.controller,
     required this.auth,
+    this.onOpenAlerts,
   });
 
   @override
@@ -171,11 +177,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               if (node != null) LiveFeedCard(nodeId: node.id),
 
-              _sectionTitle('Latest readings'),
+              if (widget.controller.isSimulation) ...[
+                _sectionTitle('Try a scenario'),
+                SimulationControls(
+                  simulationService: widget.controller.simulationService,
+                ),
+              ],
+
+              _sectionTitle('Sensor readings'),
               _readingsCard(),
 
               if (node != null) ...[
-                _sectionTitle('Fire danger'),
+                _sectionTitle('Fire weather today'),
                 FireDangerCard(
                   node: node,
                   canEdit: widget.auth.isAdmin,
@@ -183,17 +196,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
 
-              _sectionTitle('Location'),
-              _locationCard(node),
-
-              if (node != null) ...[
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: _openHistory,
-                  icon: const Icon(Icons.show_chart, size: 20),
-                  label: const Text('History & trends'),
-                ),
-              ],
+              _sectionTitle('More'),
+              _moreCard(node),
             ],
           ),
         );
@@ -211,15 +215,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  /// One card for the selected node: who it is, whether it's reporting,
-  /// its current risk and why.
+  /// The selected sensor at a glance: one plain verdict, coloured to match,
+  /// with what to do next.
   Widget _statusCard(NodeModel? node) {
     final source = _source;
     final data = source.data;
     final status = node?.status ?? NodeStatus.online;
     final lastUpdated = source.lastUpdated;
-    final color = riskColor(data.riskLevel);
     final muted = Colors.grey.shade600;
+
+    final List<AlertModel> openHere = widget.controller.isLive
+        ? widget.controller.repository.openAlerts
+              .where((a) => a.deviceId == node?.id)
+              .toList()
+        : source.activeAlerts;
+    final offline = status == NodeStatus.stale || status == NodeStatus.offline;
+    final waiting = source.isLive && !source.isDataAvailable;
+    final level = data.riskLevel;
+
+    final IconData icon;
+    final Color color;
+    final String title;
+    final String message;
+
+    if (openHere.isNotEmpty) {
+      icon = alertIcon(openHere.first.type);
+      color = Colors.red.shade700;
+      title = alertTitle(openHere.first.type);
+      message = openHere.length == 1
+          ? 'Reported ${timeAgo(openHere.first.detectedAt)}. Check the alert and respond.'
+          : '${openHere.length} open alerts for this sensor. Check them and respond.';
+    } else if (waiting) {
+      icon = Icons.hourglass_empty;
+      color = muted;
+      title = 'Waiting for data';
+      message = node == null
+          ? 'No sensors are reporting yet.'
+          : 'This sensor has not sent any readings yet.';
+    } else if (offline) {
+      icon = Icons.wifi_off;
+      color = Colors.orange.shade800;
+      title = 'Sensor offline';
+      message =
+          'No signal since ${lastUpdated == null ? 'a while' : _formatUpdated(lastUpdated)}. '
+          "Check the sensor's power and Wi-Fi. Readings below may be old.";
+    } else if (level == 'HIGH' || level == 'CRITICAL') {
+      icon = Icons.local_fire_department;
+      color = Colors.red.shade700;
+      title = 'High fire risk';
+      message = 'Readings point to a possible fire. Check the area now.';
+    } else if (level == 'MEDIUM' || level == 'MODERATE') {
+      icon = Icons.visibility_outlined;
+      color = Colors.orange.shade800;
+      title = 'Be alert';
+      message = 'Some readings are above normal. Keep an eye on this sensor.';
+    } else {
+      icon = Icons.check_circle_outline;
+      color = Colors.green.shade700;
+      title = 'All clear';
+      message = 'No signs of fire at this sensor.';
+    }
 
     return Card(
       child: Padding(
@@ -230,95 +285,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Row(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        node?.name ?? data.deviceId,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        node == null
-                            ? 'Simulated node'
-                            : [
-                                if (node.zone != null) node.zone!,
-                                node.id,
-                                if (lastUpdated != null)
-                                  'updated ${_formatUpdated(lastUpdated)}',
-                              ].join(' · '),
-                        style: TextStyle(color: muted, fontSize: 12),
-                      ),
-                    ],
+                  child: Text(
+                    node?.name ?? data.deviceId,
+                    style: TextStyle(color: muted, fontWeight: FontWeight.w500),
                   ),
                 ),
                 NodeStatusChip(status: status, compact: true),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(bottom: 9, right: 8),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: color.withValues(alpha: 0.10),
+                  child: Icon(icon, color: color, size: 28),
                 ),
-                Text(
-                  _titleCase(data.riskLevel),
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 3),
-                  child: Text(
-                    'fire risk · ${data.riskScore}/100',
-                    style: TextStyle(color: muted),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(message, style: const TextStyle(fontSize: 14)),
+                    ],
                   ),
                 ),
               ],
             ),
-            if (data.alertActive) ...[
-              const SizedBox(height: 12),
-              _notice(
-                Icons.warning_amber_rounded,
-                Colors.red.shade700,
-                'Active alert · fire ${data.fireProbability.toStringAsFixed(0)}% · '
-                'smoke ${data.smokeProbability.toStringAsFixed(0)}%',
+            if (openHere.isNotEmpty && widget.onOpenAlerts != null) ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red.shade700,
+                  ),
+                  onPressed: widget.onOpenAlerts,
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  label: const Text('View alerts'),
+                ),
               ),
             ],
-            if (status == NodeStatus.stale || status == NodeStatus.offline) ...[
-              const SizedBox(height: 12),
-              _notice(
-                Icons.cloud_off_outlined,
-                Colors.orange.shade800,
-                'No data since ${lastUpdated == null ? '--' : _formatUpdated(lastUpdated)}. '
-                'Readings may be out of date.',
-              ),
-            ],
-            if (source.isLive && !source.isDataAvailable) ...[
-              const SizedBox(height: 12),
-              _notice(
-                Icons.hourglass_empty,
-                muted,
-                node == null
-                    ? 'No monitoring nodes are reporting yet.'
-                    : 'Waiting for data from ${node.id}.',
-              ),
-            ],
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            Text(
+              [
+                'Risk score ${data.riskScore}/100',
+                if (lastUpdated != null && !offline)
+                  'updated ${_formatUpdated(lastUpdated)}',
+              ].join(' · '),
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
             if (node != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
               Text(
                 _detectionText(node),
                 style: TextStyle(color: muted, fontSize: 12),
@@ -330,27 +360,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _notice(IconData icon, Color color, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text, style: TextStyle(color: color, fontSize: 13)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _readingsCard() {
     final data = _source.data;
+    final cameraClear = data.fireProbability < 50 && data.smokeProbability < 50;
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -359,12 +371,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _reading('Temperature', '${data.temperature.toStringAsFixed(1)}°C'),
             _reading('Humidity', '${data.humidity.toStringAsFixed(0)}%'),
             _reading(
-              'Fire (AI)',
-              '${data.fireProbability.toStringAsFixed(0)}%',
-            ),
-            _reading(
-              'Smoke (AI)',
-              '${data.smokeProbability.toStringAsFixed(0)}%',
+              'Camera',
+              cameraClear
+                  ? 'Clear'
+                  : data.fireProbability >= data.smokeProbability
+                  ? 'Fire'
+                  : 'Smoke',
             ),
           ],
         ),
@@ -406,14 +418,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final level = node.anomalyLevel;
     if (level == null || level == 'LEARNING') {
-      return "Learning this node's normal sensor readings (about an hour of "
+      return "Learning this sensor's normal sensor readings (about an hour of "
           'data). Camera AI alerts work meanwhile.';
     }
     if (level == 'NORMAL') {
-      return "All 6 sensors are within this node's normal range.";
+      return "All 6 sensors are within this sensor's normal range.";
     }
     final driver = sensorNames[node.anomalyDriver] ?? 'sensors';
-    return "${_titleCase(level)}: $driver is outside this node's normal range.";
+    return "${_titleCase(level)}: $driver is outside this sensor's normal range.";
   }
 
   String _formatUpdated(DateTime time) {
@@ -425,36 +437,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return '$hour:$minute:$second $period';
   }
 
-  Widget _locationCard(NodeModel? node) {
+  Widget _moreCard(NodeModel? node) {
     final name = node?.name ?? _locationName;
     final latitude = node?.latitude ?? _latitude;
     final longitude = node?.longitude ?? _longitude;
     final canEdit = node == null || widget.auth.isAdmin;
     final missing = node != null && !node.hasLocation;
+    final primary = Theme.of(context).colorScheme.primary;
 
     return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-        leading: Icon(
-          Icons.location_on_outlined,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          missing
-              ? 'No saved coordinates yet (showing the default location)'
-              : '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
-          style: TextStyle(
-            color: missing ? Colors.orange.shade800 : Colors.grey.shade600,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(Icons.location_on_outlined, color: primary),
+            title: Text('Location of $name'),
+            subtitle: Text(
+              missing
+                  ? 'Not set yet'
+                  : '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
+              style: TextStyle(
+                color: missing ? Colors.orange.shade800 : Colors.grey.shade600,
+              ),
+            ),
+            trailing: canEdit ? const Icon(Icons.chevron_right) : null,
+            onTap: canEdit ? _editLocation : null,
           ),
-        ),
-        trailing: canEdit
-            ? IconButton(
-                tooltip: 'Edit location',
-                onPressed: _editLocation,
-                icon: const Icon(Icons.edit_outlined),
-              )
-            : null,
+          if (node != null) ...[
+            const Divider(height: 1, indent: 56),
+            ListTile(
+              leading: Icon(Icons.show_chart, color: primary),
+              title: const Text('History & trends'),
+              subtitle: Text(
+                'Readings over the last day and week',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _openHistory,
+            ),
+          ],
+        ],
       ),
     );
   }

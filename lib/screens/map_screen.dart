@@ -9,6 +9,7 @@ import '../config/app_config.dart';
 import '../models/alert_model.dart';
 import '../models/detection_model.dart';
 import '../models/node_model.dart';
+import '../utils/friendly.dart';
 import '../services/gps_service.dart';
 import '../services/location_service.dart';
 import '../services/node_repository.dart';
@@ -779,7 +780,7 @@ class _MapScreenState extends State<MapScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'MONITORING NODE',
+                        'Sensor',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -828,7 +829,7 @@ class _MapScreenState extends State<MapScreen> {
                   Expanded(
                     child: _routeInfoItem(
                       icon: Icons.route,
-                      title: 'ROAD DISTANCE',
+                      title: 'Road distance',
                       value: _formatDistance(_roadDistanceInMeters!),
                     ),
                   ),
@@ -861,7 +862,7 @@ class _MapScreenState extends State<MapScreen> {
                         )
                       : const Icon(Icons.alt_route),
                   label: Text(
-                    _loadingRoute ? 'CALCULATING ROUTE...' : 'SHOW ROAD ROUTE',
+                    _loadingRoute ? 'Finding route...' : 'Show road route',
                   ),
                 ),
               ),
@@ -971,9 +972,9 @@ class _MapScreenState extends State<MapScreen> {
                 children: [
                   Text(
                     hasAlerts
-                        ? '$activeAlertCount ACTIVE INCIDENT'
-                              '${activeAlertCount > 1 ? 'S' : ''}'
-                        : 'AREA NORMAL',
+                        ? '$activeAlertCount open alert'
+                              '${activeAlertCount > 1 ? 's' : ''}'
+                        : 'All clear',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
@@ -1050,10 +1051,10 @@ class _MapScreenState extends State<MapScreen> {
                   'Humidity',
                   '${alert.humidity.toStringAsFixed(0)}%',
                 ),
-                _dialogDetail('Monitoring Node', alert.deviceId),
+                _dialogDetail('Sensor', alert.deviceId),
                 _dialogDetail('Latitude', alert.latitude.toStringAsFixed(5)),
                 _dialogDetail('Longitude', alert.longitude.toStringAsFixed(5)),
-                _dialogDetail('Status', alert.status),
+                _dialogDetail('Status', alertStatusLabel(alert.status)),
               ],
             ),
           ),

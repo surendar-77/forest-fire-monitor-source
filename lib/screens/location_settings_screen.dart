@@ -179,7 +179,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'FIXED MONITORING NODE',
+                            'Sensor location',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -265,7 +265,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
               child: ElevatedButton.icon(
                 onPressed: _saving ? null : _saveLocation,
                 icon: const Icon(Icons.save),
-                label: Text(_saving ? 'SAVING...' : 'SAVE LOCATION'),
+                label: Text(_saving ? 'Saving...' : 'Save location'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15),
                 ),
@@ -280,7 +280,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _saving ? null : _resetLocation,
                   icon: const Icon(Icons.restore),
-                  label: const Text('RESET TO DEFAULT'),
+                  label: const Text('Reset to default'),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 15),
                   ),

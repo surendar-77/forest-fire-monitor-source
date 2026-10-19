@@ -30,8 +30,8 @@ class NodeSelector extends StatelessWidget {
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
-                  'No monitoring nodes yet. Nodes appear here as soon as '
-                  'they send their first reading.',
+                  'No sensors yet. Each sensor appears here as soon as it '
+                  'sends its first reading.',
                 ),
               ),
             ],

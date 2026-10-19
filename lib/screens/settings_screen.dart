@@ -64,7 +64,7 @@ class SettingsScreen extends StatelessWidget {
                 leading: const Icon(Icons.edit_location_alt_outlined),
                 title: const Text('Default map location'),
                 subtitle: const Text(
-                  'Used for nodes that have no saved coordinates',
+                  'Used for sensors that have no saved location',
                 ),
                 onTap: () => Navigator.push(
                   context,
@@ -152,8 +152,8 @@ class _SubscriptionTile extends StatelessWidget {
       children: [
         SwitchListTile(
           secondary: const Icon(Icons.notifications_active_outlined),
-          title: const Text('Alerts from all nodes'),
-          subtitle: const Text('Turn off to choose specific nodes'),
+          title: const Text('Alerts from all sensors'),
+          subtitle: const Text('Turn off to choose specific sensors'),
           value: allNodes,
           onChanged: (value) {
             auth.updateSubscribedNodes(
@@ -307,11 +307,11 @@ class _SetRoleDialogState extends State<_SetRoleDialog> {
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.pop(context),
-          child: const Text('CANCEL'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
           onPressed: _busy ? null : _submit,
-          child: Text(_busy ? 'SAVING...' : 'SAVE'),
+          child: Text(_busy ? 'Saving...' : 'Save'),
         ),
       ],
     );
@@ -359,7 +359,7 @@ class _NearbyAlertsTileState extends State<_NearbyAlertsTile> {
       secondary: const Icon(Icons.near_me_outlined),
       title: const Text('Alert me about fires near me'),
       subtitle: const Text(
-        'Serious alerts from any node within 10 km of this phone. '
+        'Serious alerts from any sensor within 10 km of this phone. '
         "Shares this phone's location with the alert service.",
       ),
       value: _enabled,
