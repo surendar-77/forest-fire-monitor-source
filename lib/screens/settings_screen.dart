@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
+import '../services/app_update.dart';
 import '../services/auth_service.dart';
 import '../services/fcm_service.dart';
 import '../services/node_repository.dart';
@@ -100,6 +101,8 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
               ],
+              const Divider(),
+              const _AppVersionTile(),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.red),
@@ -348,7 +351,11 @@ class _NearbyAlertsTileState extends State<_NearbyAlertsTile> {
     });
     if (!ok) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Allow location access to get alerts about nearby fires.')),
+        const SnackBar(
+          content: Text(
+            'Allow location access to get alerts about nearby fires.',
+          ),
+        ),
       );
     }
   }
@@ -364,6 +371,77 @@ class _NearbyAlertsTileState extends State<_NearbyAlertsTile> {
       ),
       value: _enabled,
       onChanged: _busy ? null : _toggle,
+    );
+  }
+}
+
+/// Shows the running version and checks for a newer published one.
+class _AppVersionTile extends StatefulWidget {
+  const _AppVersionTile();
+
+  @override
+  State<_AppVersionTile> createState() => _AppVersionTileState();
+}
+
+class _AppVersionTileState extends State<_AppVersionTile> {
+  bool _checking = false;
+
+  Future<void> _check() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _checking = true);
+    final published = await AppUpdate.publishedBuildId();
+    if (!mounted) return;
+    setState(() => _checking = false);
+
+    if (published == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't check for updates. Check your connection."),
+        ),
+      );
+    } else if (published == AppUpdate.buildId) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("You're on the latest version.")),
+      );
+    } else {
+      final update = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Update available'),
+          content: const Text(
+            'A newer version of the app has been published. Update now?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Later'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+      if (update == true) await AppUpdate.applyUpdate();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final version = AppUpdate.buildId.isEmpty
+        ? 'development build'
+        : 'build ${AppUpdate.buildId}';
+    return ListTile(
+      leading: const Icon(Icons.system_update_alt),
+      title: const Text('App version'),
+      subtitle: Text(version),
+      trailing: AppUpdate.supported
+          ? TextButton(
+              onPressed: _checking ? null : _check,
+              child: Text(_checking ? 'Checking...' : 'Check for updates'),
+            )
+          : null,
     );
   }
 }

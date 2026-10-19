@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -6,6 +8,7 @@ import '../services/fcm_service.dart';
 import '../services/node_repository.dart';
 import '../services/notification_service.dart';
 import '../widgets/connection_banner.dart';
+import '../widgets/update_banner.dart';
 import '../widgets/urgent_alert_dialog.dart';
 
 import 'alerts_screen.dart';
@@ -81,13 +84,21 @@ class _AppShellState extends State<AppShell> {
     widget.repository.incomingAlert.value = null;
     _alertDialogOpen = true;
 
-    try {
-      await NotificationService.startEmergencyAlarm();
-    } catch (error) {
-      debugPrint('Alarm unavailable: $error');
-    }
+    // Start the alarm without waiting for it: on the web, audio can stay
+    // pending (autoplay rules) and must never hold back the pop-up.
+    unawaited(
+      NotificationService.startEmergencyAlarm()
+          .timeout(const Duration(seconds: 5))
+          .then(
+            (_) {},
+            onError: (Object error) => debugPrint('Alarm unavailable: $error'),
+          ),
+    );
 
-    if (!mounted) return;
+    if (!mounted) {
+      _alertDialogOpen = false;
+      return;
+    }
     final action = await showDialog<UrgentAlertAction>(
       context: context,
       barrierDismissible: false,
@@ -100,9 +111,11 @@ class _AppShellState extends State<AppShell> {
     );
     _alertDialogOpen = false;
 
-    try {
-      await NotificationService.stopEmergencyAlarm();
-    } catch (_) {}
+    unawaited(
+      NotificationService.stopEmergencyAlarm()
+          .timeout(const Duration(seconds: 3))
+          .then((_) {}, onError: (Object _) {}),
+    );
 
     if (!mounted) return;
     switch (action) {
@@ -199,6 +212,7 @@ class _AppShellState extends State<AppShell> {
           ),
           body: Column(
             children: [
+              const UpdateBanner(),
               if (_dataSourceController.isLive)
                 ConnectionBanner(repository: widget.repository),
               if (_dataSourceController.isSimulation) _simulationBanner(),

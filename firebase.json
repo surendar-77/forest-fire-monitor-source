@@ -1,1 +1,88 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"forest-fire-3d2f0","appId":"1:436247104577:android:434d8de8a126bc120a8ac0","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"forest-fire-3d2f0","configurations":{"android":"1:436247104577:android:434d8de8a126bc120a8ac0","ios":"1:436247104577:ios:72b4edc4c61d97aa0a8ac0","macos":"1:436247104577:ios:72b4edc4c61d97aa0a8ac0","web":"1:436247104577:web:19ba6f550c44ec160a8ac0","windows":"1:436247104577:web:2fec7abc191ee1380a8ac0"}}}}},"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"database":{"rules":"database.rules.json"},"hosting":{"public":"build/web","ignore":["firebase.json","**/.*"],"rewrites":[{"source":"**","destination":"/index.html"}],"headers":[{"source":"/firebase-messaging-sw.js","headers":[{"key":"Cache-Control","value":"no-cache"}]},{"source":"**/*.@(js|wasm|json)","headers":[{"key":"Cache-Control","value":"public, max-age=3600"}]}]},"emulators":{"auth":{"port":9099},"firestore":{"port":8081},"ui":{"enabled":true},"database":{"port":9000}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "forest-fire-3d2f0",
+          "appId": "1:436247104577:android:434d8de8a126bc120a8ac0",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "forest-fire-3d2f0",
+          "configurations": {
+            "android": "1:436247104577:android:434d8de8a126bc120a8ac0",
+            "ios": "1:436247104577:ios:72b4edc4c61d97aa0a8ac0",
+            "macos": "1:436247104577:ios:72b4edc4c61d97aa0a8ac0",
+            "web": "1:436247104577:web:19ba6f550c44ec160a8ac0",
+            "windows": "1:436247104577:web:2fec7abc191ee1380a8ac0"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/firebase-messaging-sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|js|json|wasm|txt)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ]
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "firestore": {
+      "port": 8081
+    },
+    "ui": {
+      "enabled": true
+    },
+    "database": {
+      "port": 9000
+    }
+  }
+}

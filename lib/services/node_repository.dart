@@ -39,7 +39,6 @@ class NodeRepository extends ChangeNotifier {
   List<AlertModel> _alerts = [];
 
   bool _nodesLoaded = false;
-  bool _alertsLoaded = false;
   final Set<String> _seenAlertIds = {};
 
   /// Newly arrived urgent alert (camera fire/smoke, or High/Critical) for
@@ -123,16 +122,15 @@ class NodeRepository extends ChangeNotifier {
         .snapshots(includeMetadataChanges: true)
         .listen(_handleAlerts, onError: _handleError);
 
-    _backendSubscription = _firestore
-        .doc('status/backend')
-        .snapshots()
-        .listen((snapshot) {
-          _backendLoaded = true;
-          _backendHeartbeat = parseDateTimeOrNull(
-            snapshot.data()?['lastHeartbeat'],
-          );
-          notifyListeners();
-        }, onError: _handleError);
+    _backendSubscription = _firestore.doc('status/backend').snapshots().listen((
+      snapshot,
+    ) {
+      _backendLoaded = true;
+      _backendHeartbeat = parseDateTimeOrNull(
+        snapshot.data()?['lastHeartbeat'],
+      );
+      notifyListeners();
+    }, onError: _handleError);
 
     // Node status depends on the clock (lastSeen age), so re-evaluate it
     // periodically even when no new data arrives.
@@ -158,7 +156,6 @@ class NodeRepository extends ChangeNotifier {
     _nodes = {};
     _alerts = [];
     _nodesLoaded = false;
-    _alertsLoaded = false;
     _seenAlertIds.clear();
     _error = null;
 
@@ -182,7 +179,6 @@ class NodeRepository extends ChangeNotifier {
   }
 
   void _handleAlerts(QuerySnapshot<Map<String, dynamic>> snapshot) {
-    final previouslyLoaded = _alertsLoaded;
     _alerts = snapshot.docs.map((doc) {
       final data = doc.data();
       final node = _nodes[data['deviceId']?.toString()];
@@ -195,11 +191,14 @@ class NodeRepository extends ChangeNotifier {
       );
     }).toList();
 
-    // Pop up alerts that arrive while the app is open; ignore the backlog
-    // delivered with the first snapshot.
+    // Pop up urgent alerts that nobody has handled yet and that are under
+    // 15 minutes old: new ones as they arrive, and on first load the newest
+    // one still waiting (so opening the app during a fire shows it).
+    // Alerts arrive newest first, so the first match is the one to show.
+    AlertModel? toShow;
     for (final alert in _alerts) {
       final isNew = _seenAlertIds.add(alert.id);
-      if (!isNew || !previouslyLoaded || snapshot.metadata.isFromCache) continue;
+      if (!isNew || snapshot.metadata.isFromCache) continue;
       final urgent =
           alert.type == 'FIRE' ||
           alert.type == 'SMOKE' ||
@@ -207,10 +206,10 @@ class NodeRepository extends ChangeNotifier {
           alert.severity == 'CRITICAL';
       final recent = DateTime.now().difference(alert.detectedAt).inMinutes < 15;
       if (alert.status == AlertStatus.active && urgent && recent) {
-        incomingAlert.value = alert;
+        toShow ??= alert;
       }
     }
-    _alertsLoaded = true;
+    if (toShow != null) incomingAlert.value = toShow;
 
     _updateSyncState(snapshot.metadata);
     notifyListeners();
@@ -248,7 +247,11 @@ class NodeRepository extends ChangeNotifier {
     });
   }
 
-  Future<void> resolveIncident(String alertId, {String? notes, String? outcome}) async {
+  Future<void> resolveIncident(
+    String alertId, {
+    String? notes,
+    String? outcome,
+  }) async {
     final user = _auth.currentUser;
 
     await _firestore.collection('alerts').doc(alertId).update({
