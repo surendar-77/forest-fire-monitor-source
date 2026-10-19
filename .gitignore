@@ -81,3 +81,7 @@ ml/data/*.zip
 **/__pycache__/
 ml/data/india/viirs_*.csv
 ml/data/india/weather/
+
+# Published APKs (tool/release_apk.ps1)
+releases/
+worker/public/apk/

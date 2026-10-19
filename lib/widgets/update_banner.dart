@@ -18,6 +18,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
   Timer? _timer;
   AppLifecycleListener? _lifecycle;
   bool _available = false;
+  String _offer = '';
   bool _updating = false;
 
   @override
@@ -30,9 +31,14 @@ class _UpdateBannerState extends State<UpdateBanner> {
   }
 
   Future<void> _check() async {
-    final available = await AppUpdate.isUpdateAvailable();
-    if (mounted && available != _available) {
-      setState(() => _available = available);
+    final offer = await AppUpdate.availableUpdate();
+    if (!mounted) return;
+    final available = offer != null;
+    if (available != _available || (offer ?? '') != _offer) {
+      setState(() {
+        _available = available;
+        _offer = offer ?? '';
+      });
     }
   }
 
@@ -61,10 +67,12 @@ class _UpdateBannerState extends State<UpdateBanner> {
                 size: 20,
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'A new version of the app is available.',
-                  style: TextStyle(
+                  _offer.startsWith('version')
+                      ? 'App $_offer is available.'
+                      : 'A new version of the app is available.',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                   ),
@@ -81,6 +89,8 @@ class _UpdateBannerState extends State<UpdateBanner> {
                     : () async {
                         setState(() => _updating = true);
                         await AppUpdate.applyUpdate();
+                        // Android hands off to the download; the web reloads.
+                        if (mounted) setState(() => _updating = false);
                       },
                 child: Text(_updating ? 'Updating...' : 'Update'),
               ),

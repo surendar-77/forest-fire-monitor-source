@@ -15,5 +15,11 @@
   },
   "observability": {
     "enabled": true
+  },
+  // Published Android APKs (tool/release_apk.ps1): /apk/version.json and
+  // /apk/ForestFireMonitor-X.Y.Z.apk. Firebase Hosting on the free plan
+  // refuses executable files, so the APK is served from here.
+  "assets": {
+    "directory": "./public"
   }
 }

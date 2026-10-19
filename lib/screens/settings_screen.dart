@@ -391,17 +391,25 @@ class _AppVersionTileState extends State<_AppVersionTile> {
   Future<void> _check() async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _checking = true);
-    final published = await AppUpdate.publishedBuildId();
+    // Web: compare build ids. Android: compare build numbers with the
+    // latest published APK.
+    final apk = await AppUpdate.latestApk();
+    final published = apk == null ? await AppUpdate.publishedBuildId() : null;
     if (!mounted) return;
     setState(() => _checking = false);
 
-    if (published == null) {
+    final reached = apk != null || published != null;
+    final upToDate = apk != null
+        ? apk.build <= AppUpdate.appBuild
+        : published == AppUpdate.buildId;
+
+    if (!reached) {
       messenger.showSnackBar(
         const SnackBar(
           content: Text("Couldn't check for updates. Check your connection."),
         ),
       );
-    } else if (published == AppUpdate.buildId) {
+    } else if (upToDate) {
       messenger.showSnackBar(
         const SnackBar(content: Text("You're on the latest version.")),
       );
@@ -410,8 +418,12 @@ class _AppVersionTileState extends State<_AppVersionTile> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Update available'),
-          content: const Text(
-            'A newer version of the app has been published. Update now?',
+          content: Text(
+            apk == null
+                ? 'A newer version of the app has been published. Update now?'
+                : 'Version ${apk.version} is available.'
+                      '${apk.notes.isEmpty ? '' : '\n\n${apk.notes}'}'
+                      '\n\nUpdate downloads it; then tap Install.',
           ),
           actions: [
             TextButton(
@@ -431,9 +443,7 @@ class _AppVersionTileState extends State<_AppVersionTile> {
 
   @override
   Widget build(BuildContext context) {
-    final version = AppUpdate.buildId.isEmpty
-        ? 'development build'
-        : 'build ${AppUpdate.buildId}';
+    final version = AppUpdate.currentVersionLabel;
     return ListTile(
       leading: const Icon(Icons.system_update_alt),
       title: const Text('App version'),
