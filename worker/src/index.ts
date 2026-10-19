@@ -250,6 +250,8 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         mq2_2: reading.mq2_2,
         fireProbability,
         smokeProbability,
+        aiClass: reading.aiClass,
+        aiConfidence: reading.aiConfidence,
         riskScore: risk.score,
         anomalyScore: anomaly.score,
         anomalyLevel: anomaly.level,
@@ -593,6 +595,13 @@ async function hourlyRollup(ctx: Context): Promise<void> {
     let temperatureCount = 0;
     let humiditySum = 0;
     let humidityCount = 0;
+    let temperature2Sum = 0;
+    let temperature2Count = 0;
+    let humidity2Sum = 0;
+    let humidity2Count = 0;
+    let smoke1Max = 0;
+    let smoke2Max = 0;
+    let smokeProbabilityMax = 0;
     let smokeMax = 0;
     let fireMax = 0;
     let riskMax = 0;
@@ -606,6 +615,17 @@ async function hourlyRollup(ctx: Context): Promise<void> {
         humiditySum += data.humidity;
         humidityCount++;
       }
+      if (typeof data.temperature2 === "number") {
+        temperature2Sum += data.temperature2;
+        temperature2Count++;
+      }
+      if (typeof data.humidity2 === "number") {
+        humidity2Sum += data.humidity2;
+        humidity2Count++;
+      }
+      smoke1Max = Math.max(smoke1Max, asNumber(data.mq2_1));
+      smoke2Max = Math.max(smoke2Max, asNumber(data.mq2_2));
+      smokeProbabilityMax = Math.max(smokeProbabilityMax, asNumber(data.smokeProbability));
       smokeMax = Math.max(smokeMax, asNumber(data.mq2_1), asNumber(data.mq2_2));
       fireMax = Math.max(fireMax, asNumber(data.fireProbability));
       riskMax = Math.max(riskMax, asNumber(data.riskScore));
@@ -651,6 +671,13 @@ async function hourlyRollup(ctx: Context): Promise<void> {
         temperatureCount,
         humiditySum,
         humidityCount,
+        temperature2Sum,
+        temperature2Count,
+        humidity2Sum,
+        humidity2Count,
+        smoke1Max,
+        smoke2Max,
+        smokeProbabilityMax,
         smokeMax,
         fireProbabilityMax: fireMax,
         riskScoreMax: riskMax,

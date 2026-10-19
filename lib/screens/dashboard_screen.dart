@@ -25,11 +25,18 @@ class DashboardScreen extends StatefulWidget {
   /// Switches the app to the Alerts tab.
   final VoidCallback? onOpenAlerts;
 
+  /// Set when shown inside the slide-up panel over the Home map: the panel
+  /// drives scrolling, and the map already shows the overview figures.
+  final ScrollController? scrollController;
+  final bool embedded;
+
   const DashboardScreen({
     super.key,
     required this.controller,
     required this.auth,
     this.onOpenAlerts,
+    this.scrollController,
+    this.embedded = false,
   });
 
   @override
@@ -159,13 +166,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final node = _node;
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          controller: widget.scrollController,
+          padding: EdgeInsets.fromLTRB(16, widget.embedded ? 0 : 8, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (widget.embedded)
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
               if (widget.controller.isLive) ...[
-                OverviewStrip(repository: widget.controller.repository),
-                const SizedBox(height: 16),
+                if (!widget.embedded) ...[
+                  OverviewStrip(repository: widget.controller.repository),
+                  const SizedBox(height: 16),
+                ],
                 NodeSelector(
                   nodes: widget.controller.repository.nodes,
                   selectedNodeId: widget.controller.selectedNodeId,

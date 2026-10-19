@@ -12,8 +12,8 @@ import '../widgets/update_banner.dart';
 import '../widgets/urgent_alert_dialog.dart';
 
 import 'alerts_screen.dart';
-import 'dashboard_screen.dart';
-import 'map_screen.dart';
+import 'data_screen.dart';
+import 'home_map_screen.dart';
 import 'settings_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -32,7 +32,7 @@ class _AppShellState extends State<AppShell> {
   );
 
   static const _home = 0;
-  static const _map = 1;
+  static const _data = 1;
   static const _alerts = 2;
 
   int _selectedIndex = _home;
@@ -132,7 +132,7 @@ class _AppShellState extends State<AppShell> {
         setState(() => _selectedIndex = _alerts);
       case UrgentAlertAction.view:
         _dataSourceController.selectNode(alert.deviceId);
-        setState(() => _selectedIndex = _map);
+        setState(() => _selectedIndex = _home);
       case UrgentAlertAction.dismiss:
       case null:
         break;
@@ -144,18 +144,13 @@ class _AppShellState extends State<AppShell> {
 
     switch (index) {
       case _home:
-        return DashboardScreen(
+        return HomeMapScreen(
           controller: _dataSourceController,
           auth: widget.auth,
           onOpenAlerts: () => setState(() => _selectedIndex = _alerts),
         );
-      case _map:
-        return MapScreen(
-          simulationService: source,
-          repository: _dataSourceController.isLive ? widget.repository : null,
-          selectedNodeId: _dataSourceController.selectedNodeId,
-          onNodeSelected: _dataSourceController.selectNode,
-        );
+      case _data:
+        return DataScreen(controller: _dataSourceController, auth: widget.auth);
       default:
         return AlertsScreen(
           simulationService: source,
@@ -165,7 +160,7 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  final List<String> _titles = const ['Forest Fire Monitor', 'Map', 'Alerts'];
+  final List<String> _titles = const ['Forest Fire Monitor', 'Data', 'Alerts'];
 
   @override
   void dispose() {
@@ -233,9 +228,9 @@ class _AppShellState extends State<AppShell> {
                 label: 'Home',
               ),
               const NavigationDestination(
-                icon: Icon(Icons.map_outlined),
-                selectedIcon: Icon(Icons.map),
-                label: 'Map',
+                icon: Icon(Icons.insights_outlined),
+                selectedIcon: Icon(Icons.insights),
+                label: 'Data',
               ),
               NavigationDestination(
                 icon: Badge(
