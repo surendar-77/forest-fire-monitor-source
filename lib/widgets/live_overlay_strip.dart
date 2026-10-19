@@ -195,10 +195,73 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
                 ),
               ],
             ),
+            if (node.danger != null) ...[
+              const SizedBox(height: 8),
+              _firePrediction(node.danger!),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// The ML fire-danger prediction for today and the riskiest hour ahead.
+  Widget _firePrediction(FireDanger danger) {
+    final color = _dangerColor(danger.level);
+    final peak = danger.peak;
+    final riskyPeak = peak != null && peak.level != 'LOW';
+    final chance = danger.chance;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.local_fire_department_outlined, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Fire prediction today: '),
+                  TextSpan(
+                    text: levelLabel(danger.level),
+                    style: TextStyle(fontWeight: FontWeight.w700, color: color),
+                  ),
+                  if (chance != null)
+                    TextSpan(
+                      text:
+                          ' · ${chance < 0.01 ? '<1' : (chance * 100).toStringAsFixed(0)}% chance',
+                    ),
+                  TextSpan(
+                    text: riskyPeak
+                        ? ' · riskiest ${hourLabel12(peak.hourLabel)}'
+                        : ' · no risky hours ahead',
+                  ),
+                ],
+              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+              maxLines: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Color _dangerColor(String level) {
+    switch (level) {
+      case 'HIGH':
+      case 'VERY HIGH':
+        return Colors.red.shade700;
+      case 'MEDIUM':
+      case 'MODERATE':
+        return Colors.orange.shade800;
+      default:
+        return Colors.green.shade700;
+    }
   }
 
   Widget _tile(IconData icon, Color color, String value, String label) {
