@@ -134,12 +134,12 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
               spacing: 18,
               runSpacing: 10,
               children: [
-                _value('Temp', reading.temperature, '°C', 1),
-                _value('Humidity', reading.humidity, '%', 0),
+                _value('Temperature 1', reading.temperature, '°C', 1),
+                _value('Humidity 1', reading.humidity, '%', 0),
+                _value('Temperature 2', reading.temperature2, '°C', 1),
+                _value('Humidity 2', reading.humidity2, '%', 0),
                 _value('Smoke 1', reading.smoke1?.toDouble(), '', 0),
                 _value('Smoke 2', reading.smoke2?.toDouble(), '', 0),
-                if (reading.temperature2 != null)
-                  _value('Temp 2', reading.temperature2, '°C', 1),
               ],
             ),
             if (reading.aiClass != null) ...[

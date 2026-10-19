@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../models/node_model.dart';
@@ -127,7 +128,16 @@ class FireDangerCard extends StatelessWidget {
           ],
         ),
         if (danger.timeline.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          Text(
+            'Risk forecast, next 24 hours',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
           _timeline(danger.timeline),
         ],
         const SizedBox(height: 8),
@@ -135,45 +145,126 @@ class FireDangerCard extends StatelessWidget {
     );
   }
 
-  /// One bar per hour for the next 24 hours.
+  /// Green → amber → red as the danger index rises (0-1).
+  static Color _gradientColor(double index) {
+    final v = index.clamp(0.0, 1.0);
+    const green = Color(0xFF2E7D32);
+    const amber = Color(0xFFF9A825);
+    const red = Color(0xFFC62828);
+    return v < 0.5
+        ? Color.lerp(green, amber, v / 0.5)!
+        : Color.lerp(amber, red, (v - 0.5) / 0.5)!;
+  }
+
+  /// Risk forecast for the next 24 hours as a line whose colour follows the
+  /// risk, over Medium / High guide lines.
   Widget _timeline(List<DangerHour> hours) {
+    final spots = [
+      for (final (i, h) in hours.indexed)
+        FlSpot(i.toDouble(), (h.probability * 100).clamp(0, 100).toDouble()),
+    ];
+    final colors = [for (final h in hours) _gradientColor(h.probability)];
+    final gradient = LinearGradient(
+      colors: colors.length == 1 ? [colors.first, colors.first] : colors,
+    );
+    final areaGradient = LinearGradient(
+      colors: [
+        for (final c
+            in (colors.length == 1 ? [colors.first, colors.first] : colors))
+          c.withValues(alpha: 0.18),
+      ],
+    );
+
+    HorizontalLine guide(double y, String label, Color color) => HorizontalLine(
+      y: y,
+      color: color.withValues(alpha: 0.5),
+      strokeWidth: 1,
+      dashArray: [4, 4],
+      label: HorizontalLineLabel(
+        show: true,
+        alignment: Alignment.topRight,
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+        labelResolver: (_) => label,
+      ),
+    );
+
     return SizedBox(
-      height: 54,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final (i, h) in hours.indexed)
-            Expanded(
-              child: Tooltip(
-                message:
-                    '${hourLabel12(h.hourLabel)}: ${levelLabel(h.level).toLowerCase()}',
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Container(
-                      height: 6 + 28 * h.probability.clamp(0, 1),
-                      margin: const EdgeInsets.symmetric(horizontal: 1),
-                      decoration: BoxDecoration(
-                        color: colorFor(h.level).withValues(alpha: 0.75),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      i % 6 == 0 ? hourLabel12(h.hourLabel) : '',
-                      maxLines: 1,
-                      overflow: TextOverflow.visible,
-                      softWrap: false,
+      height: 150,
+      child: LineChart(
+        LineChartData(
+          minX: 0,
+          maxX: (hours.length - 1).toDouble(),
+          minY: 0,
+          maxY: 100,
+          gridData: const FlGridData(show: false),
+          borderData: FlBorderData(
+            show: true,
+            border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+          ),
+          extraLinesData: ExtraLinesData(
+            horizontalLines: [
+              guide(100 / 3, 'Medium', Colors.orange.shade800),
+              guide(200 / 3, 'High', Colors.red.shade700),
+            ],
+          ),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+            leftTitles: const AxisTitles(),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 22,
+                interval: 6,
+                getTitlesWidget: (value, meta) {
+                  final i = value.round();
+                  if (i < 0 || i >= hours.length || value != i.toDouble()) {
+                    return const SizedBox.shrink();
+                  }
+                  return SideTitleWidget(
+                    meta: meta,
+                    child: Text(
+                      i == 0 ? 'Now' : hourLabel12(hours[i].hourLabel),
                       style: TextStyle(
-                        fontSize: 9,
+                        fontSize: 10,
                         color: Colors.grey.shade600,
                       ),
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
-        ],
+          ),
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (_) => Colors.grey.shade900,
+              getTooltipItems: (touched) => [
+                for (final spot in touched)
+                  LineTooltipItem(
+                    '${hourLabel12(hours[spot.x.round()].hourLabel)}\n'
+                    '${levelLabel(hours[spot.x.round()].level)} · ${spot.y.round()}/100',
+                    const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              preventCurveOverShooting: true,
+              gradient: gradient,
+              barWidth: 3,
+              isStrokeCapRound: true,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: true, gradient: areaGradient),
+            ),
+          ],
+        ),
       ),
     );
   }

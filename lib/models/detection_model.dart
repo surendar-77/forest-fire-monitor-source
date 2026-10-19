@@ -6,6 +6,10 @@ class DetectionModel {
   final double temperature;
   final double humidity;
 
+  /// Second DHT22 zone; null when the node has only one.
+  final double? temperature2;
+  final double? humidity2;
+
   final double fireProbability;
   final double smokeProbability;
 
@@ -21,6 +25,8 @@ class DetectionModel {
     required this.deviceId,
     required this.temperature,
     required this.humidity,
+    this.temperature2,
+    this.humidity2,
     required this.fireProbability,
     required this.smokeProbability,
     required this.latitude,
@@ -41,6 +47,8 @@ class DetectionModel {
       deviceId: parseString(data['deviceId'], documentId),
       temperature: parseDouble(data['temperature'], 0),
       humidity: parseDouble(data['humidity'], 0),
+      temperature2: parseDoubleOrNull(data['temperature2']),
+      humidity2: parseDoubleOrNull(data['humidity2']),
       fireProbability: parseDouble(data['fireProbability'], 0),
       smokeProbability: parseDouble(data['smokeProbability'], 0),
       latitude: parseDouble(data['latitude'], fallbackLatitude),
@@ -67,6 +75,8 @@ class DetectionModel {
       deviceId: deviceId ?? this.deviceId,
       temperature: temperature ?? this.temperature,
       humidity: humidity ?? this.humidity,
+      temperature2: temperature2,
+      humidity2: humidity2,
       fireProbability: fireProbability ?? this.fireProbability,
       smokeProbability: smokeProbability ?? this.smokeProbability,
       latitude: latitude ?? this.latitude,

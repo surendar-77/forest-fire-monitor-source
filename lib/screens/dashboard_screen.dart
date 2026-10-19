@@ -224,11 +224,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final lastUpdated = source.lastUpdated;
     final muted = Colors.grey.shade600;
 
-    final List<AlertModel> openHere = widget.controller.isLive
-        ? widget.controller.repository.openAlerts
-              .where((a) => a.deviceId == node?.id)
-              .toList()
-        : source.activeAlerts;
+    // Most serious first; an old "went offline" alert doesn't headline once
+    // the sensor is back online.
+    final List<AlertModel> openHere =
+        (widget.controller.isLive
+                ? widget.controller.repository.openAlerts
+                      .where((a) => a.deviceId == node?.id)
+                      .toList()
+                : List<AlertModel>.of(source.activeAlerts))
+            .where(
+              (a) => !(a.type == 'NODE_OFFLINE' && status == NodeStatus.online),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byType = _alertPriority(a).compareTo(_alertPriority(b));
+            return byType != 0 ? byType : b.detectedAt.compareTo(a.detectedAt);
+          });
     final offline = status == NodeStatus.stale || status == NodeStatus.offline;
     final waiting = source.isLive && !source.isDataAvailable;
     final level = data.riskLevel;
@@ -360,6 +371,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  static int _alertPriority(AlertModel alert) {
+    switch (alert.type.toUpperCase()) {
+      case 'FIRE':
+      case 'FIRE DETECTED':
+      case 'CRITICAL FIRE':
+        return 0;
+      case 'SMOKE':
+      case 'SMOKE DETECTED':
+        return 1;
+      case 'SATELLITE_HOTSPOT':
+        return 2;
+      case 'NODE_OFFLINE':
+        return 4;
+      default:
+        return 3;
+    }
+  }
+
   Widget _readingsCard() {
     final data = _source.data;
     final cameraClear = data.fireProbability < 50 && data.smokeProbability < 50;
@@ -368,8 +397,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           children: [
-            _reading('Temperature', '${data.temperature.toStringAsFixed(1)}°C'),
-            _reading('Humidity', '${data.humidity.toStringAsFixed(0)}%'),
+            _reading(
+              data.temperature2 == null ? 'Temperature' : 'Temp 1 / 2',
+              data.temperature2 == null
+                  ? '${data.temperature.toStringAsFixed(1)}°C'
+                  : '${data.temperature.toStringAsFixed(0)}° / ${data.temperature2!.toStringAsFixed(0)}°',
+            ),
+            _reading(
+              data.humidity2 == null ? 'Humidity' : 'Humidity 1 / 2',
+              data.humidity2 == null
+                  ? '${data.humidity.toStringAsFixed(0)}%'
+                  : '${data.humidity.toStringAsFixed(0)}% / ${data.humidity2!.toStringAsFixed(0)}%',
+            ),
             _reading(
               'Camera',
               cameraClear
