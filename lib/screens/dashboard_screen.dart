@@ -181,18 +181,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (widget.embedded)
+              if (widget.embedded) ...[
                 Center(
                   child: Container(
                     width: 40,
                     height: 4,
-                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    margin: const EdgeInsets.only(top: 10, bottom: 6),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade400,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
+                Center(
+                  child: Text(
+                    'Swipe up for sensor details',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               if (widget.controller.isLive) ...[
                 if (!widget.embedded) ...[
                   OverviewStrip(repository: widget.controller.repository),

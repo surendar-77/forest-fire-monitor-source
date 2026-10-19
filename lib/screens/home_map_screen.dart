@@ -51,6 +51,9 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   LatLng? _pending;
   bool _saving = false;
 
+  /// Collapsed height of the data panel: the handle and its label.
+  static const double _sheetMin = 0.075;
+
   static const _esriImagery =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
   static const _esriLabels =
@@ -459,7 +462,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             // Attribution (required by the tile providers).
             Positioned(
               left: 8,
-              bottom: MediaQuery.sizeOf(context).height * 0.2 + 4,
+              bottom: MediaQuery.sizeOf(context).height * _sheetMin + 4,
               child: Text(
                 _mode == MapLayerMode.street
                     ? AppConfig.mapAttribution
@@ -520,11 +523,12 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             // All sensor data and predictions, sliding up over the map.
             if (_placingId == null)
               DraggableScrollableSheet(
-                initialChildSize: 0.34,
-                minChildSize: 0.2,
+                // Starts minimised (just the handle) so the map is in view.
+                initialChildSize: _sheetMin,
+                minChildSize: _sheetMin,
                 maxChildSize: 0.94,
                 snap: true,
-                snapSizes: const [0.34, 0.94],
+                snapSizes: const [_sheetMin, 0.45, 0.94],
                 builder: (context, scrollController) => Material(
                   color: Theme.of(context).scaffoldBackgroundColor,
                   elevation: 12,
