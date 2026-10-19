@@ -107,8 +107,19 @@ class NodeRepository extends ChangeNotifier {
       return;
     }
 
-    _fallbackLatitude = await _locationService.getLatitude();
-    _fallbackLongitude = await _locationService.getLongitude();
+    // The saved default map location is only a fallback for nodes without
+    // coordinates: never let reading it (device storage, which can fail on
+    // some Android builds) stop the data from loading.
+    try {
+      _fallbackLatitude = await _locationService.getLatitude().timeout(
+        const Duration(seconds: 2),
+      );
+      _fallbackLongitude = await _locationService.getLongitude().timeout(
+        const Duration(seconds: 2),
+      );
+    } catch (error) {
+      debugPrint('Default location unavailable, using built-in: $error');
+    }
 
     _nodesSubscription = _firestore
         .collection('devices')

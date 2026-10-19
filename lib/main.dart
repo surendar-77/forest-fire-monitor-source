@@ -38,8 +38,11 @@ Future<void> main() async {
   // Keep the last-known readings available offline. Mobile caches by
   // default; web needs it switched on.
   if (kIsWeb) {
+    // Multi-tab: the installed app and browser tabs share the offline cache
+    // (single-tab mode leaves every other open copy without it).
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
+      webPersistentTabManager: WebPersistentMultipleTabManager(),
     );
   }
 
