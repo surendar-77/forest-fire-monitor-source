@@ -17,12 +17,14 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
+  <!-- viewport-fit=cover: draw edge to edge; #flutter_host keeps the app in the safe area. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Real-time forest fire detection and early warning for field officers.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#F6F7F6">
   <meta name="apple-mobile-web-app-title" content="Fire Monitor">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -35,7 +37,19 @@
 
   <!-- Shown until Flutter draws its first frame, instead of a blank page. -->
   <style>
-    html, body { margin: 0; height: 100%; background: #F6F7F6; }
+    html, body {
+      margin: 0; height: 100%; background: #F6F7F6;
+      overflow: hidden; overscroll-behavior: none;
+    }
+    /* The app itself, kept inside the phone's safe area (notch, gesture
+       bar, rounded corners); the background above fills the rest. */
+    #flutter_host {
+      position: fixed;
+      top: env(safe-area-inset-top, 0px);
+      right: env(safe-area-inset-right, 0px);
+      bottom: env(safe-area-inset-bottom, 0px);
+      left: env(safe-area-inset-left, 0px);
+    }
     #splash {
       position: fixed; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: center; gap: 18px;
@@ -54,6 +68,7 @@
   </style>
 </head>
 <body>
+  <div id="flutter_host"></div>
   <div id="splash">
     <img src="icons/Icon-192.png" alt="">
     <h1>Forest Fire Monitor</h1>
