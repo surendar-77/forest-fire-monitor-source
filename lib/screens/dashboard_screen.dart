@@ -6,6 +6,7 @@ import '../utils/friendly.dart';
 import '../widgets/simulation_controls.dart';
 import '../widgets/fire_danger_card.dart';
 import '../widgets/live_feed_card.dart';
+import '../widgets/lora_card.dart';
 import '../widgets/node_selector.dart';
 import '../widgets/overview_strip.dart';
 import '../widgets/node_status_chip.dart';
@@ -186,6 +187,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               _sectionTitle('Sensor readings'),
               _readingsCard(),
+              if (node != null) LoraCard(link: node.lora),
 
               if (node != null) ...[
                 _sectionTitle('Fire weather today'),

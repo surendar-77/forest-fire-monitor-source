@@ -79,7 +79,10 @@ class FireDanger {
       terrain: parseStringOrNull(value['terrain']),
       baseProbability: parseDoubleOrNull(value['baseProbability']),
       timeline: value['timeline'] is List
-          ? (value['timeline'] as List).map(DangerHour.fromMap).whereType<DangerHour>().toList()
+          ? (value['timeline'] as List)
+                .map(DangerHour.fromMap)
+                .whereType<DangerHour>()
+                .toList()
           : const [],
       peak: DangerHour.fromMap(value['peak']),
       spread: FireSpread.fromMap(value['spread']),
@@ -184,6 +187,61 @@ class SatelliteHotspot {
   }
 }
 
+/// LoRa link to a node as measured by a receiver board
+/// (`devices/{id}.lora`, written by the backend once a minute).
+class LoraLink {
+  /// After this long without a report the receiver counts as offline.
+  static const Duration staleAfter = Duration(minutes: 3);
+
+  final int? rssi;
+  final int? rssiMin;
+  final double? snr;
+  final int packets;
+  final int lost;
+  final int? lossPercent;
+  final String quality;
+  final int bars;
+  final String gateway;
+  final DateTime? lastPacketAt;
+  final DateTime? updatedAt;
+
+  const LoraLink({
+    this.rssi,
+    this.rssiMin,
+    this.snr,
+    this.packets = 0,
+    this.lost = 0,
+    this.lossPercent,
+    this.quality = 'No signal',
+    this.bars = 0,
+    this.gateway = '',
+    this.lastPacketAt,
+    this.updatedAt,
+  });
+
+  bool isStaleAt(DateTime now) {
+    final t = updatedAt;
+    return t == null || now.difference(t) > staleAfter;
+  }
+
+  static LoraLink? fromMap(dynamic value) {
+    if (value is! Map) return null;
+    return LoraLink(
+      rssi: parseDoubleOrNull(value['rssi'])?.round(),
+      rssiMin: parseDoubleOrNull(value['rssiMin'])?.round(),
+      snr: parseDoubleOrNull(value['snr']),
+      packets: parseInt(value['packets'], 0),
+      lost: parseInt(value['lost'], 0),
+      lossPercent: parseDoubleOrNull(value['lossPercent'])?.round(),
+      quality: parseString(value['quality'], 'No signal'),
+      bars: parseInt(value['bars'], 0),
+      gateway: parseString(value['gateway'], ''),
+      lastPacketAt: parseDateTimeOrNull(value['lastPacketAt']),
+      updatedAt: parseDateTimeOrNull(value['updatedAt']),
+    );
+  }
+}
+
 class DangerHour {
   /// Local time at the node, "2026-10-19T14:00".
   final String time;
@@ -235,6 +293,9 @@ class NodeModel {
   /// Satellite fire detections within the backend's radius (last 24 h).
   final List<SatelliteHotspot> hotspots;
 
+  /// LoRa signal from the receiver board, if one reports this node.
+  final LoraLink? lora;
+
   const NodeModel({
     required this.id,
     required this.name,
@@ -249,6 +310,7 @@ class NodeModel {
     this.terrain,
     this.airQuality,
     this.hotspots = const [],
+    this.lora,
   });
 
   double get latitude => detection.latitude;
@@ -322,7 +384,10 @@ class NodeModel {
           : null,
       terrain: parseStringOrNull(data['terrain']),
       airQuality: AirQuality.fromMap(data['airQuality']),
-      hotspots: data['satellite'] is Map && (data['satellite'] as Map)['hotspots'] is List
+      lora: LoraLink.fromMap(data['lora']),
+      hotspots:
+          data['satellite'] is Map &&
+              (data['satellite'] as Map)['hotspots'] is List
           ? ((data['satellite'] as Map)['hotspots'] as List)
                 .map(SatelliteHotspot.fromMap)
                 .whereType<SatelliteHotspot>()

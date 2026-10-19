@@ -24,6 +24,7 @@ import {
   type Reading,
 } from "./anomaly.js";
 import { parseDeviceAlert, safeEqual } from "./deviceAlert.js";
+import { loraLink, parseLoraReport } from "./lora.js";
 import { dangerIndex, dangerLevel, fireChance, fireDangerModel, terrainDanger } from "./fireDanger.js";
 import { ffmc, ffmcAfter, isi } from "./fwi.js";
 import { currentConditions, dangerInputs, fetchHourlyWeather, upcomingHours } from "./weather.js";
@@ -907,6 +908,36 @@ async function handleDeviceAlert(request: Request, env: Env): Promise<Response> 
 }
 
 // ---------------------------------------------------------------------------
+// LoRa link reports from a receiver board: POST /lora (once a minute)
+// ---------------------------------------------------------------------------
+
+async function handleLoraReport(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json(400, { error: "Body must be JSON." });
+  }
+
+  const report = parseLoraReport(body);
+  if (typeof report === "string") return json(400, { error: report });
+
+  const ctx = context(env);
+  const expected = await deviceKeyFor(ctx, report.gateway);
+  if (!expected || !safeEqual(expected, report.key)) {
+    return json(403, { error: "Unknown gateway or wrong key." });
+  }
+
+  const devicePath = `devices/${report.node}`;
+  if (!(await ctx.fs.get(devicePath))) return json(404, { error: "Unknown node." });
+
+  await ctx.fs.commit([
+    { set: devicePath, merge: true, data: { lora: loraLink(report, new Date()) as unknown as Plain } },
+  ]);
+  return json(200, { status: "saved" });
+}
+
+// ---------------------------------------------------------------------------
 
 export default {
   async scheduled(event: ScheduledController, env: Env, executionCtx: ExecutionContext) {
@@ -937,6 +968,16 @@ export default {
       } catch (error) {
         console.error("device alert failed:", error instanceof Error ? error.message : error);
         return json(500, { error: "Alert could not be saved; the node will retry." });
+      }
+    }
+
+    if (url.pathname === "/lora") {
+      if (request.method !== "POST") return json(405, { error: "Use POST." });
+      try {
+        return await handleLoraReport(request, env);
+      } catch (error) {
+        console.error("lora report failed:", error instanceof Error ? error.message : error);
+        return json(500, { error: "Report could not be saved." });
       }
     }
 
