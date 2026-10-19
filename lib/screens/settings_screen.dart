@@ -7,6 +7,7 @@ import '../services/app_update.dart';
 import '../services/auth_service.dart';
 import '../services/fcm_service.dart';
 import '../services/node_repository.dart';
+import '../services/notification_service.dart';
 import 'location_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -59,6 +60,7 @@ class SettingsScreen extends StatelessWidget {
               _sectionTitle(context, 'Alert notifications'),
               _SubscriptionTile(auth: auth, repository: repository, user: user),
               const _NearbyAlertsTile(),
+              const _AlarmTestTile(),
               const Divider(),
               _sectionTitle(context, 'Device'),
               ListTile(
@@ -442,6 +444,59 @@ class _AppVersionTileState extends State<_AppVersionTile> {
               child: Text(_checking ? 'Checking...' : 'Check for updates'),
             )
           : null,
+    );
+  }
+}
+
+/// Plays the fire alarm for a few seconds so the user can check the volume.
+/// On the web this tap also lets the page play the alarm later.
+class _AlarmTestTile extends StatefulWidget {
+  const _AlarmTestTile();
+
+  @override
+  State<_AlarmTestTile> createState() => _AlarmTestTileState();
+}
+
+class _AlarmTestTileState extends State<_AlarmTestTile> {
+  bool _playing = false;
+
+  Future<void> _test() async {
+    setState(() => _playing = true);
+    try {
+      await NotificationService.startEmergencyAlarm().timeout(
+        const Duration(seconds: 5),
+      );
+      await Future<void>.delayed(const Duration(seconds: 4));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not play the alarm on this device.'),
+          ),
+        );
+      }
+    } finally {
+      try {
+        await NotificationService.stopEmergencyAlarm().timeout(
+          const Duration(seconds: 3),
+        );
+      } catch (_) {}
+      if (mounted) setState(() => _playing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.volume_up_outlined),
+      title: const Text('Fire alarm sound'),
+      subtitle: const Text(
+        'Plays with the fire pop-up while the app is open. Tap Test to check the volume.',
+      ),
+      trailing: TextButton(
+        onPressed: _playing ? null : _test,
+        child: Text(_playing ? 'Playing...' : 'Test'),
+      ),
     );
   }
 }

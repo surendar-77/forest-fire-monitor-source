@@ -161,7 +161,17 @@ export async function pushAlert(
               },
               webpush: {
                 headers: { Urgency: urgent ? "high" : "normal" },
-                notification: { requireInteraction: urgent || confirmed, tag, renotify: true },
+                notification: {
+                  requireInteraction: urgent || confirmed,
+                  tag,
+                  renotify: true,
+                  silent: false,
+                  // Long buzz pattern for fire/critical alerts (Android Chrome).
+                  vibrate: urgent || confirmed ? [800, 250, 800, 250, 800, 250, 1500] : [300, 150, 300],
+                  icon: "/icons/Icon-192.png",
+                  badge: "/icons/Icon-192.png",
+                },
+                fcm_options: { link: "/" },
               },
             },
           }),
