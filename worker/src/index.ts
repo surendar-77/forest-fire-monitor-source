@@ -14,7 +14,13 @@
  * every minute.
  */
 
-import { AI_FIRE_CONFIDENCE_THRESHOLD, blocksNewDetection, decideAlert, OPEN_STATUSES } from "./alertRules.js";
+import {
+  AI_FIRE_CONFIDENCE_THRESHOLD,
+  blocksNewDetection,
+  decideAlert,
+  foldRepeatDetection,
+  OPEN_STATUSES,
+} from "./alertRules.js";
 import {
   hourStats,
   isLearnableHour,
@@ -145,6 +151,36 @@ async function openAlertsFor(ctx: Context, nodeId: string, type: string): Promis
   return open.filter((doc) => doc.data.deviceId === nodeId && doc.data.type === type);
 }
 
+/**
+ * A detection that matched an open alert: extend its streak, and once fire
+ * has been seen without a break for 2 minutes mark it confirmed, raise it
+ * to CRITICAL and send a critical notification (the app then draws its
+ * fire area).
+ */
+async function recordRepeatDetection(ctx: Context, alert: Doc): Promise<void> {
+  const update = foldRepeatDetection(alert.data, ctx.now);
+  const fields: Record<string, Plain> = {
+    lastDetectedAt: update.lastDetectedAt,
+    streakStartedAt: update.streakStartedAt,
+    detections: update.detections,
+  };
+  if (update.confirmNow) {
+    fields.confirmedAt = ctx.now;
+    fields.severity = "CRITICAL";
+  }
+  await ctx.fs.set(alert.path, fields, true);
+  if (!update.confirmNow) return;
+
+  console.log(`Fire confirmed: ${alert.id} (seen ${update.detections} times without a break)`);
+  const confirmed = { ...alert.data, ...fields };
+  await run(`confirm push ${alert.id}`, () =>
+    pushAlert(ctx.fs, ctx.projectId, ctx.token, alert.id, confirmed, {
+      maxSends: budget(ctx, 6),
+      confirmed: true,
+    }),
+  );
+}
+
 async function createAlertIfNew(
   ctx: Context,
   nodeId: string,
@@ -164,7 +200,10 @@ async function createAlertIfNew(
     : await openAlertsFor(ctx, nodeId, type);
 
   const blocking = recentOnly ? open.filter((doc) => blocksNewDetection(doc.data, ctx.now)) : open;
-  if (blocking.length > 0) return null;
+  if (blocking.length > 0) {
+    if (recentOnly) await recordRepeatDetection(ctx, blocking[0]);
+    return null;
+  }
 
   const alertId = `${nodeId}_${type}_${Math.floor(ctx.now.getTime() / 1000)}`;
   await ctx.fs.set(`alerts/${alertId}`, {
@@ -175,6 +214,9 @@ async function createAlertIfNew(
     status: "ACTIVE",
     detectedAt: ctx.now,
     escalationLevel: 0,
+    lastDetectedAt: ctx.now,
+    streakStartedAt: ctx.now,
+    detections: 1,
     ...details,
   });
   console.log(`Alert created: ${alertId} (${severity})`);

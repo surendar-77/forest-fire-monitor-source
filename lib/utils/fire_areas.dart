@@ -46,9 +46,15 @@ const double minPossibleRadiusM = 180;
 const Duration maxSpreadProjection = Duration(hours: 2);
 const Duration possibleLookAhead = Duration(hours: 1);
 
-/// Estimated fire areas from open fire/smoke alerts (grown with the FBP
-/// spread estimate since detection) and from NASA satellite detections
-/// (clusters, buffered by the 375 m VIIRS pixel).
+/// A confirmed fire not reported for this long is drawn only as
+/// "possibly active" (the camera may have lost sight of it).
+const Duration activeIfSeenWithin = Duration(minutes: 15);
+
+/// Estimated fire areas from open fire alerts that the backend has
+/// confirmed (fire seen without a break for 2 minutes), grown with the FBP
+/// spread estimate since detection, and from NASA satellite detections
+/// (clusters, buffered by the 375 m VIIRS pixel). A single fire frame or a
+/// smoke alert draws nothing.
 List<FireArea> estimateFireAreas({
   required List<NodeModel> nodes,
   required List<AlertModel> alerts,
@@ -58,20 +64,16 @@ List<FireArea> estimateFireAreas({
   final areas = <FireArea>[];
   final nodesById = {for (final n in nodes) n.id: n};
 
-  // Newest open fire (or smoke) alert per sensor.
+  // Newest open, confirmed fire alert per sensor.
   final latest = <String, AlertModel>{};
   for (final alert in alerts) {
     final type = alert.type.toUpperCase();
     final isFire =
         type == 'FIRE' || type == 'FIRE DETECTED' || type == 'CRITICAL FIRE';
-    final isSmoke = type == 'SMOKE' || type == 'SMOKE DETECTED';
-    if (!alert.isOpen || !(isFire || isSmoke)) continue;
+    if (!alert.isOpen || !isFire || alert.confirmedAt == null) continue;
     if (current.difference(alert.detectedAt) > sensorFireMaxAge) continue;
     final prev = latest[alert.deviceId];
-    final prevIsFire = prev != null && prev.type.toUpperCase().contains('FIRE');
-    if (prev == null ||
-        (isFire && !prevIsFire) ||
-        (isFire == prevIsFire && alert.detectedAt.isAfter(prev.detectedAt))) {
+    if (prev == null || alert.detectedAt.isAfter(prev.detectedAt)) {
       latest[alert.deviceId] = alert;
     }
   }
@@ -81,20 +83,19 @@ List<FireArea> estimateFireAreas({
     final alert = entry.value;
     if (node == null || !node.hasLocation) continue;
     final center = LatLng(node.latitude, node.longitude);
-    final isFire = alert.type.toUpperCase().contains('FIRE');
     final elapsed = current.difference(alert.detectedAt);
     final spread = node.danger?.spread;
+    final lastSeen = alert.lastDetectedAt ?? alert.confirmedAt!;
+    final stillSeen = current.difference(lastSeen) <= activeIfSeenWithin;
 
     areas.add(
       FireArea(
         id: 'sensor-${alert.id}-active',
-        status: FireAreaStatus.active,
+        status: stillSeen ? FireAreaStatus.active : FireAreaStatus.possible,
         points: _spreadArea(center, spread, _clamp(elapsed), minActiveRadiusM),
         center: center,
-        title: isFire
-            ? (alert.severity == 'CRITICAL' ? 'Severe fire' : 'Fire')
-            : 'Smoke seen',
-        updatedAt: alert.detectedAt,
+        title: alert.severity == 'CRITICAL' ? 'Severe fire' : 'Fire',
+        updatedAt: lastSeen,
         source: 'Sensor ${node.name}',
         alertId: alert.id,
       ),
@@ -111,7 +112,7 @@ List<FireArea> estimateFireAreas({
         ),
         center: center,
         title: 'Possible spread (next hour)',
-        updatedAt: alert.detectedAt,
+        updatedAt: lastSeen,
         source: 'Sensor ${node.name}',
         alertId: alert.id,
       ),

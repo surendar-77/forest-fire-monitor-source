@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../services/location_service.dart';
 
-typedef SaveNodeLocation =
-    Future<void> Function(String name, double latitude, double longitude);
+typedef SaveNodeLocation = Future<void> Function(
+  String name,
+  double latitude,
+  double longitude,
+);
 
 /// Edits a monitoring location. With [onSave] it edits a live node (an
 /// administrator saving to Firestore); without it, the on-device default

@@ -37,6 +37,8 @@ AlertModel alert(
   Duration ago, {
   String status = AlertStatus.active,
   String type = 'FIRE',
+  bool confirmed = true,
+  Duration? lastSeenAgo,
 }) => AlertModel(
   id: 'a-${ago.inMinutes}-$type',
   deviceId: 'NODE-01',
@@ -50,6 +52,10 @@ AlertModel alert(
   longitude: 86.35,
   detectedAt: now.subtract(ago),
   status: status,
+  confirmedAt: confirmed
+      ? now.subtract(ago).add(const Duration(minutes: 2))
+      : null,
+  lastDetectedAt: now.subtract(lastSeenAgo ?? Duration.zero),
 );
 
 const windySpread = FireSpread(
@@ -184,5 +190,42 @@ void main() {
       hasLength(1),
     ); // 18 h old
     expect(areas.every((a) => a.source == 'NASA satellite'), isTrue);
+  });
+
+  test('a fire not yet confirmed (under 2 minutes) draws nothing', () {
+    expect(
+      estimateFireAreas(
+        nodes: [node()],
+        alerts: [alert(const Duration(minutes: 1), confirmed: false)],
+        now: now,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('smoke alerts never draw a fire area', () {
+    expect(
+      estimateFireAreas(
+        nodes: [node()],
+        alerts: [alert(const Duration(minutes: 5), type: 'SMOKE')],
+        now: now,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('a confirmed fire the camera lost sight of turns "possibly active"', () {
+    final areas = estimateFireAreas(
+      nodes: [node()],
+      alerts: [
+        alert(
+          const Duration(minutes: 40),
+          lastSeenAgo: const Duration(minutes: 20),
+        ),
+      ],
+      now: now,
+    );
+    expect(areas, isNotEmpty);
+    expect(areas.every((a) => a.status == FireAreaStatus.possible), isTrue);
   });
 }

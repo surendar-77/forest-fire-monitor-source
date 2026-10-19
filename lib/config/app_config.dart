@@ -34,16 +34,13 @@ class AppConfig {
 
   /// OpenRouteService key for directions to a fire. Without it the app falls
   /// back to the public OSRM demo server, which is for development only.
-  static const String routingApiKey = String.fromEnvironment(
-    'ROUTING_API_KEY',
-  );
+  static const String routingApiKey = String.fromEnvironment('ROUTING_API_KEY');
 
   /// Realtime Database that nodes write their per-second readings to
   /// (`live/{nodeId}/values`). Must match RTDB_URL in the node firmware.
   static const String realtimeDatabaseUrl = String.fromEnvironment(
     'REALTIME_DB_URL',
-    defaultValue:
-        'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
+    defaultValue: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',
   );
 
   /// Identifies the app to tile servers, as their usage policies require.

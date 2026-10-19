@@ -362,8 +362,9 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                         ),
                     for (final n in nodes.where((n) => n.hasLocation))
                       _nodeMarker(n),
+                    // One label per fire (not on the next-hour spread area).
                     for (final a in areas.where(
-                      (a) => a.status == FireAreaStatus.active,
+                      (a) => !a.id.endsWith('-possible'),
                     ))
                       _areaLabel(a),
                     if (_placingId != null && _pending != null)

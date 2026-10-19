@@ -25,6 +25,8 @@ export interface PushOptions {
   nearby?: { latitude: number; longitude: number; radiusKm: number };
   /** Most sends allowed in this invocation (Workers Free: 50 subrequests). */
   maxSends: number;
+  /** Fire seen continuously for 2+ minutes: a new, critical notification. */
+  confirmed?: boolean;
 }
 
 type Alert = Record<string, Plain>;
@@ -73,6 +75,14 @@ export async function pushAlert(
   options: PushOptions,
 ): Promise<number> {
   const escalation = options.escalation ?? 0;
+  const confirmed = options.confirmed === true;
+  const tag = confirmed ? `${alertId}-confirmed` : alertId;
+  const heading = confirmed
+    ? `CRITICAL · Fire confirmed at ${alert.deviceId ?? "?"}`
+    : title(alert, escalation);
+  const messageBody = confirmed
+    ? `Fire seen continuously for over 2 minutes. ${body(alert)}`
+    : body(alert);
   const [users, tokens] = await Promise.all([fs.query("users"), fs.query("pushTokens")]);
 
   const audience = new Set(
@@ -137,11 +147,11 @@ export async function pushAlert(
           body: JSON.stringify({
             message: {
               token: target.id,
-              notification: { title: title(alert, escalation), body: body(alert) },
+              notification: { title: heading, body: messageBody },
               data,
               android: {
                 priority: "HIGH",
-                notification: { channel_id: ANDROID_CHANNEL_ID, sound: "default", tag: alertId },
+                notification: { channel_id: ANDROID_CHANNEL_ID, sound: "default", tag },
               },
               apns: {
                 headers: { "apns-priority": "10" },
@@ -151,7 +161,7 @@ export async function pushAlert(
               },
               webpush: {
                 headers: { Urgency: urgent ? "high" : "normal" },
-                notification: { requireInteraction: urgent, tag: alertId },
+                notification: { requireInteraction: urgent || confirmed, tag, renotify: true },
               },
             },
           }),

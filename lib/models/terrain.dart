@@ -21,6 +21,8 @@ class Terrain {
     Terrain('wetland', 'Mangrove / wetland', 0.3),
   ];
 
-  static Terrain byId(String? id) =>
-      all.firstWhere((t) => t.id == id, orElse: () => all.firstWhere((t) => t.id == 'mixed'));
+  static Terrain byId(String? id) => all.firstWhere(
+    (t) => t.id == id,
+    orElse: () => all.firstWhere((t) => t.id == 'mixed'),
+  );
 }

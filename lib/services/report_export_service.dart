@@ -71,7 +71,10 @@ class ReportExportService {
     return 'fire_alerts_${scope}_$stamp';
   }
 
-  static Future<void> shareCsv(List<AlertModel> alerts, {String scope = 'all'}) {
+  static Future<void> shareCsv(
+    List<AlertModel> alerts, {
+    String scope = 'all',
+  }) {
     final fileName = '${_fileStem(scope)}.csv';
 
     return SharePlus.instance.share(

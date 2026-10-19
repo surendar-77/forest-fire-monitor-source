@@ -73,3 +73,39 @@ export function blocksNewDetection(alert: Record<string, unknown>, now: Date): b
   if (status === "ACTIVE") return detected != null && now.getTime() - detected < ACTIVE_DEDUPE_MS;
   return false;
 }
+
+/** Fire seen this long without a break counts as confirmed. */
+export const CONFIRM_AFTER_MS = 2 * 60_000;
+/**
+ * Reports further apart than this break the streak. The node re-sends a
+ * fire alert every 60 s while the camera keeps seeing fire; ThingSpeak
+ * summaries add one a minute.
+ */
+export const CONTINUITY_GAP_MS = 150_000;
+
+export interface RepeatUpdate {
+  lastDetectedAt: Date;
+  streakStartedAt: Date;
+  detections: number;
+  /** True only on the report that first reaches CONFIRM_AFTER_MS. */
+  confirmNow: boolean;
+}
+
+/**
+ * Folds a repeat detection into an open alert's streak: when it was last
+ * seen, since when it has been seen without a break, and whether this
+ * report confirms it (fire alerts only, once).
+ */
+export function foldRepeatDetection(alert: Record<string, unknown>, now: Date): RepeatUpdate {
+  const detected = asTime(alert.detectedAt) ?? asTime(alert.timestamp) ?? now.getTime();
+  const last = asTime(alert.lastDetectedAt) ?? detected;
+  const streak = asTime(alert.streakStartedAt) ?? detected;
+  const broken = now.getTime() - last > CONTINUITY_GAP_MS;
+  const streakStartedAt = broken ? now.getTime() : streak;
+  const detections = (typeof alert.detections === "number" ? alert.detections : 1) + 1;
+  const confirmNow =
+    alert.type === "FIRE" &&
+    alert.confirmedAt == null &&
+    now.getTime() - streakStartedAt >= CONFIRM_AFTER_MS;
+  return { lastDetectedAt: now, streakStartedAt: new Date(streakStartedAt), detections, confirmNow };
+}

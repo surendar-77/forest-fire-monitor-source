@@ -58,6 +58,13 @@ class AlertModel {
   final String? notes;
   final String? outcome;
 
+  /// Set by the backend once fire has been seen without a break for
+  /// 2 minutes; the map only draws fire areas for confirmed fires.
+  final DateTime? confirmedAt;
+
+  /// When the sensor last reported this fire (repeats extend the alert).
+  final DateTime? lastDetectedAt;
+
   const AlertModel({
     required this.id,
     required this.deviceId,
@@ -77,6 +84,8 @@ class AlertModel {
     this.resolvedAt,
     this.notes,
     this.outcome,
+    this.confirmedAt,
+    this.lastDetectedAt,
   });
 
   bool get isOpen =>
@@ -112,6 +121,8 @@ class AlertModel {
       resolvedAt: resolvedAt ?? this.resolvedAt,
       notes: notes ?? this.notes,
       outcome: outcome ?? this.outcome,
+      confirmedAt: confirmedAt,
+      lastDetectedAt: lastDetectedAt,
     );
   }
 
@@ -153,6 +164,8 @@ class AlertModel {
       resolvedAt: parseDateTimeOrNull(data['resolvedAt']),
       notes: parseStringOrNull(data['notes']),
       outcome: parseStringOrNull(data['outcome']),
+      confirmedAt: parseDateTimeOrNull(data['confirmedAt']),
+      lastDetectedAt: parseDateTimeOrNull(data['lastDetectedAt']),
     );
   }
 

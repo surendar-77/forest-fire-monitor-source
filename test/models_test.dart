@@ -108,9 +108,18 @@ void main() {
     test('status follows lastSeen age', () {
       final n = node({'status': 'ONLINE'});
 
-      expect(n.statusAt(seen.add(const Duration(seconds: 30))), NodeStatus.online);
-      expect(n.statusAt(seen.add(const Duration(minutes: 3))), NodeStatus.stale);
-      expect(n.statusAt(seen.add(const Duration(minutes: 11))), NodeStatus.offline);
+      expect(
+        n.statusAt(seen.add(const Duration(seconds: 30))),
+        NodeStatus.online,
+      );
+      expect(
+        n.statusAt(seen.add(const Duration(minutes: 3))),
+        NodeStatus.stale,
+      );
+      expect(
+        n.statusAt(seen.add(const Duration(minutes: 11))),
+        NodeStatus.offline,
+      );
     });
 
     test('backend OFFLINE wins even if lastSeen is recent', () {

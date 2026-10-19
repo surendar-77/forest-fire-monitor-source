@@ -24,7 +24,9 @@ class UrgentAlertDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final camera = alert.type == 'FIRE' || alert.type == 'SMOKE';
-    final confidence = alert.type == 'SMOKE' ? alert.smokeProbability : alert.fireProbability;
+    final confidence = alert.type == 'SMOKE'
+        ? alert.smokeProbability
+        : alert.fireProbability;
 
     return Dialog.fullscreen(
       backgroundColor: Colors.red.shade800,
@@ -34,7 +36,11 @@ class UrgentAlertDialog extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.local_fire_department, color: Colors.white, size: 96),
+              const Icon(
+                Icons.local_fire_department,
+                color: Colors.white,
+                size: 96,
+              ),
               const SizedBox(height: 12),
               Text(
                 _headline,
@@ -54,10 +60,15 @@ class UrgentAlertDialog extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               if (camera && confidence > 0)
-                _line('Camera AI confidence: ${confidence.toStringAsFixed(0)}%'),
+                _line(
+                  'Camera AI confidence: ${confidence.toStringAsFixed(0)}%',
+                ),
               if (alert.temperature != 0)
-                _line('Temperature: ${alert.temperature.toStringAsFixed(1)} °C'),
-              if (alert.humidity != 0) _line('Humidity: ${alert.humidity.toStringAsFixed(0)} %'),
+                _line(
+                  'Temperature: ${alert.temperature.toStringAsFixed(1)} °C',
+                ),
+              if (alert.humidity != 0)
+                _line('Humidity: ${alert.humidity.toStringAsFixed(0)} %'),
               if (alert.latitude != 0 || alert.longitude != 0)
                 _line(
                   'Location: ${alert.latitude.toStringAsFixed(5)}, '
@@ -73,9 +84,13 @@ class UrgentAlertDialog extends StatelessWidget {
                       foregroundColor: Colors.red.shade800,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    onPressed: () => Navigator.pop(context, UrgentAlertAction.acknowledge),
+                    onPressed: () =>
+                        Navigator.pop(context, UrgentAlertAction.acknowledge),
                     icon: const Icon(Icons.check),
-                    label: const Text("Acknowledge (I'm handling it)", style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      "Acknowledge (I'm handling it)",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               const SizedBox(height: 10),
@@ -87,14 +102,19 @@ class UrgentAlertDialog extends StatelessWidget {
                     side: const BorderSide(color: Colors.white),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
-                  onPressed: () => Navigator.pop(context, UrgentAlertAction.view),
+                  onPressed: () =>
+                      Navigator.pop(context, UrgentAlertAction.view),
                   icon: const Icon(Icons.map_outlined),
                   label: const Text('Show on map'),
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(context, UrgentAlertAction.dismiss),
-                child: const Text('Silence', style: TextStyle(color: Colors.white70)),
+                onPressed: () =>
+                    Navigator.pop(context, UrgentAlertAction.dismiss),
+                child: const Text(
+                  'Silence',
+                  style: TextStyle(color: Colors.white70),
+                ),
               ),
             ],
           ),
@@ -105,6 +125,9 @@ class UrgentAlertDialog extends StatelessWidget {
 
   Widget _line(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
-    child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 16)),
+    child: Text(
+      text,
+      style: const TextStyle(color: Colors.white, fontSize: 16),
+    ),
   );
 }

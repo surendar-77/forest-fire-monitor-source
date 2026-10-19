@@ -174,7 +174,10 @@ class _LiveFeedCardState extends State<LiveFeedCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+        Text(
+          label,
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+        ),
         Text(
           value == null ? '--' : '${value.toStringAsFixed(digits)}$unit',
           style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),

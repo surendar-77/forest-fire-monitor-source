@@ -70,9 +70,8 @@ class _NodeHistoryScreenState extends State<NodeHistoryScreen> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $error')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Export failed: $error')));
       }
     }
   }

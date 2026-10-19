@@ -8,23 +8,30 @@ class AppTheme {
   static const _border = Color(0xFFE3E6E3);
 
   static ThemeData light() {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: _seed,
-      dynamicSchemeVariant: DynamicSchemeVariant.neutral,
-    ).copyWith(
-      primary: _seed,
-      surface: Colors.white,
-      surfaceTint: Colors.transparent,
-      outlineVariant: _border,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: _seed,
+          dynamicSchemeVariant: DynamicSchemeVariant.neutral,
+        ).copyWith(
+          primary: _seed,
+          surface: Colors.white,
+          surfaceTint: Colors.transparent,
+          outlineVariant: _border,
+        );
 
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: _background,
-      dividerTheme: const DividerThemeData(color: _border, thickness: 1, space: 24),
+      dividerTheme: const DividerThemeData(
+        color: _border,
+        thickness: 1,
+        space: 24,
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: _background,
         foregroundColor: Color(0xFF1B1F1B),
@@ -55,12 +62,17 @@ class AppTheme {
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 12,
-            fontWeight: states.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.w500,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w600
+                : FontWeight.w500,
           ),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(shape: shape, minimumSize: const Size(0, 46)),
+        style: FilledButton.styleFrom(
+          shape: shape,
+          minimumSize: const Size(0, 46),
+        ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
@@ -69,7 +81,9 @@ class AppTheme {
           side: const BorderSide(color: _border),
         ),
       ),
-      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(shape: shape)),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(shape: shape),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
