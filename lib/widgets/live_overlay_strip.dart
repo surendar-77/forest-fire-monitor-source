@@ -83,6 +83,9 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
     final t2 = fresh ? live.temperature2 : d.temperature2;
     final h1 = fresh ? live.humidity : d.humidity;
     final h2 = fresh ? live.humidity2 : d.humidity2;
+    // One figure per quantity: the average of both zones' sensors.
+    final temp = _average(t1, t2);
+    final humidity = _average(h1, h2);
     final smoke = fresh ? _max(live.smoke1, live.smoke2)?.toDouble() : null;
     final aiClass = fresh ? live.aiClass : null;
     final aiConf = fresh ? live.aiConfidence : null;
@@ -156,14 +159,14 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
                 _tile(
                   Icons.thermostat,
                   Colors.deepOrange,
-                  t1 == null ? '--' : '${t1.toStringAsFixed(1)}°',
-                  t2 == null ? 'Temp' : 'Temp · ${t2.toStringAsFixed(0)}°',
+                  temp == null ? '--' : '${temp.toStringAsFixed(1)}°C',
+                  'Temp',
                 ),
                 _tile(
                   Icons.water_drop_outlined,
                   Colors.blue,
-                  h1 == null ? '--' : '${h1.toStringAsFixed(0)}%',
-                  h2 == null ? 'Humidity' : 'Humid · ${h2.toStringAsFixed(0)}%',
+                  humidity == null ? '--' : '${humidity.toStringAsFixed(0)}%',
+                  'Humidity',
                 ),
                 _tile(
                   Icons.cloud_outlined,
@@ -288,6 +291,9 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
       ),
     );
   }
+
+  static double? _average(double? a, double? b) =>
+      a == null ? b : (b == null ? a : (a + b) / 2);
 
   static int? _max(int? a, int? b) =>
       a == null ? b : (b == null ? a : (a > b ? a : b));
