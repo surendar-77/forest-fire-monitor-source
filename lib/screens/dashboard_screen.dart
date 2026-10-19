@@ -30,6 +30,10 @@ class DashboardScreen extends StatefulWidget {
   final ScrollController? scrollController;
   final bool embedded;
 
+  /// When set (Home map), "Location" opens tap-to-place on the map instead
+  /// of the latitude/longitude form.
+  final void Function(String nodeId)? onPlaceOnMap;
+
   const DashboardScreen({
     super.key,
     required this.controller,
@@ -37,6 +41,7 @@ class DashboardScreen extends StatefulWidget {
     this.onOpenAlerts,
     this.scrollController,
     this.embedded = false,
+    this.onPlaceOnMap,
   });
 
   @override
@@ -83,6 +88,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _editLocation() async {
     final node = _node;
+
+    if (node != null && widget.onPlaceOnMap != null) {
+      widget.onPlaceOnMap!(node.id);
+      return;
+    }
 
     if (node == null) {
       final changed = await Navigator.push<bool>(

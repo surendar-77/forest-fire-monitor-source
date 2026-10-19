@@ -46,6 +46,11 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   String? _centeredOn;
   Timer? _clock;
 
+  /// Tap-to-place: the sensor being placed and the spot picked so far.
+  String? _placingId;
+  LatLng? _pending;
+  bool _saving = false;
+
   static const _esriImagery =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
   static const _esriLabels =
@@ -111,6 +116,170 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     });
   }
 
+  void _startPlacing(String nodeId) {
+    final node = widget.controller.repository.node(nodeId);
+    setState(() {
+      _placingId = nodeId;
+      _pending = node != null && node.hasLocation
+          ? LatLng(node.latitude, node.longitude)
+          : null;
+    });
+  }
+
+  Future<void> _savePlacement() async {
+    final id = _placingId;
+    final point = _pending;
+    if (id == null || point == null) return;
+    final repo = widget.controller.repository;
+    final node = repo.node(id);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _saving = true);
+    try {
+      await repo.updateNodeLocation(
+        id,
+        name: node?.name ?? id,
+        latitude: double.parse(point.latitude.toStringAsFixed(6)),
+        longitude: double.parse(point.longitude.toStringAsFixed(6)),
+      );
+      if (!mounted) return;
+      setState(() {
+        _placingId = null;
+        _pending = null;
+        _centeredOn = null; // re-centre on the new spot
+      });
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Location saved. Fire weather for this spot appears within the hour.',
+          ),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not save location: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _useMyLocationForPlacement() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final position = await _gps.getCurrentLocation();
+    if (!mounted) return;
+    if (position == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Location is off or not allowed.')),
+      );
+      return;
+    }
+    final point = LatLng(position.latitude, position.longitude);
+    setState(() => _pending = point);
+    _map.move(point, 17);
+  }
+
+  List<Widget> _placingOverlay() {
+    final node = widget.controller.repository.node(_placingId!);
+    final name = node?.name ?? _placingId!;
+    return [
+      Positioned(
+        left: 12,
+        right: 70,
+        top: 12,
+        child: Material(
+          color: Colors.grey.shade900.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.touch_app_outlined, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _pending == null
+                        ? 'Tap the map where $name is installed.'
+                        : 'Tap again to move the pin, then Save.',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      Positioned(
+        left: 12,
+        right: 12,
+        bottom: 16,
+        child: Material(
+          color: Colors.white,
+          elevation: 8,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Location of $name',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _pending == null
+                      ? 'No spot picked yet'
+                      : '${_pending!.latitude.toStringAsFixed(5)}, ${_pending!.longitude.toStringAsFixed(5)}',
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _useMyLocationForPlacement,
+                  icon: const Icon(Icons.my_location, size: 18),
+                  label: const Text(
+                    "Use my current location (I'm at the sensor)",
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: _saving
+                            ? null
+                            : () => setState(() {
+                                _placingId = null;
+                                _pending = null;
+                              }),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _pending == null || _saving
+                            ? null
+                            : _savePlacement,
+                        child: Text(_saving ? 'Saving...' : 'Save'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   Future<void> _locateMe() async {
     final messenger = ScaffoldMessenger.of(context);
     final position = await _gps.getCurrentLocation();
@@ -154,6 +323,9 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                   _mapReady = true;
                   _centerOnSelectedOnce();
                 },
+                onTap: (_, point) {
+                  if (_placingId != null) setState(() => _pending = point);
+                },
               ),
               children: [
                 ..._baseLayers(),
@@ -194,6 +366,21 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                       (a) => a.status == FireAreaStatus.active,
                     ))
                       _areaLabel(a),
+                    if (_placingId != null && _pending != null)
+                      Marker(
+                        point: _pending!,
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.topCenter,
+                        child: Icon(
+                          Icons.location_on,
+                          size: 44,
+                          color: Colors.red.shade600,
+                          shadows: const [
+                            Shadow(blurRadius: 6, color: Colors.black54),
+                          ],
+                        ),
+                      ),
                     if (_me != null)
                       Marker(
                         point: _me!,
@@ -251,6 +438,16 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                   _layerButton(),
                   const SizedBox(height: 8),
                   _roundButton(Icons.my_location, 'My location', _locateMe),
+                  if (widget.auth.isAdmin &&
+                      _selected != null &&
+                      _placingId == null) ...[
+                    const SizedBox(height: 8),
+                    _roundButton(
+                      Icons.edit_location_alt_outlined,
+                      'Set sensor location on the map',
+                      () => _startPlacing(_selected!.id),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   _roundButton(
                     Icons.sensors,
@@ -279,30 +476,75 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
               ),
             ),
 
-            // All sensor data and predictions, sliding up over the map.
-            DraggableScrollableSheet(
-              initialChildSize: 0.34,
-              minChildSize: 0.2,
-              maxChildSize: 0.94,
-              snap: true,
-              snapSizes: const [0.34, 0.94],
-              builder: (context, scrollController) => Material(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                elevation: 12,
-                shadowColor: Colors.black54,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: DashboardScreen(
-                  controller: widget.controller,
-                  auth: widget.auth,
-                  onOpenAlerts: widget.onOpenAlerts,
-                  scrollController: scrollController,
-                  embedded: true,
+            if (_placingId != null) ..._placingOverlay(),
+
+            // Admins: a sensor without a location yet.
+            if (_placingId == null &&
+                widget.auth.isAdmin &&
+                _selected != null &&
+                !_selected!.hasLocation)
+              Positioned(
+                left: 12,
+                right: 70,
+                top: live ? 120 : 12,
+                child: Material(
+                  color: Colors.orange.shade700,
+                  borderRadius: BorderRadius.circular(14),
+                  elevation: 3,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => _startPlacing(_selected!.id),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.add_location_alt_outlined,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              "${_selected!.name} has no location yet. Tap here, then tap the map where it is.",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+
+            // All sensor data and predictions, sliding up over the map.
+            if (_placingId == null)
+              DraggableScrollableSheet(
+                initialChildSize: 0.34,
+                minChildSize: 0.2,
+                maxChildSize: 0.94,
+                snap: true,
+                snapSizes: const [0.34, 0.94],
+                builder: (context, scrollController) => Material(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  elevation: 12,
+                  shadowColor: Colors.black54,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: DashboardScreen(
+                    controller: widget.controller,
+                    auth: widget.auth,
+                    onOpenAlerts: widget.onOpenAlerts,
+                    onPlaceOnMap: widget.auth.isAdmin ? _startPlacing : null,
+                    scrollController: scrollController,
+                    embedded: true,
+                  ),
+                ),
+              ),
           ],
         );
       },
