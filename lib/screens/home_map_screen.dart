@@ -13,7 +13,7 @@ import '../services/location_service.dart';
 import '../utils/fire_areas.dart';
 import '../utils/friendly.dart';
 import '../utils/risk_utils.dart';
-import '../widgets/overview_strip.dart';
+import '../widgets/live_overlay_strip.dart';
 import 'dashboard_screen.dart';
 
 enum MapLayerMode { satellite, vegetation, street }
@@ -410,11 +410,8 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (live)
-                    Opacity(
-                      opacity: 0.96,
-                      child: OverviewStrip(repository: repo),
-                    ),
+                  if (live && _selected != null)
+                    LiveOverlayStrip(node: _selected!),
                   const SizedBox(height: 8),
                   Row(
                     children: [
