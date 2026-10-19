@@ -8,10 +8,15 @@ class NotificationService {
 
   static final AudioPlayer _alarmPlayer = AudioPlayer();
 
-  static const String _channelId = 'forest_fire_alerts';
-  static const String _channelName = 'Forest Fire Alerts';
+  // A channel's sound can't change once created, so the alarm tone lives
+  // in its own channel. Must match ANDROID_CHANNEL_ID in worker/src/fcm.ts.
+  static const String _channelId = 'forest_fire_alarm';
+  static const String _channelName = 'Fire alarms';
   static const String _channelDescription =
-      'Alerts for forest fire and smoke detection';
+      'Fire and smoke alerts, with the fire alarm sound';
+
+  /// android/app/src/main/res/raw/fire_alarm.mp3
+  static const _alarmSound = RawResourceAndroidNotificationSound('fire_alarm');
 
   static bool _alarmPlaying = false;
 
@@ -55,10 +60,14 @@ class NotificationService {
       description: _channelDescription,
       importance: Importance.max,
       playSound: true,
+      sound: _alarmSound,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
       enableVibration: true,
     );
 
     await androidPlugin?.createNotificationChannel(channel);
+    // The old channel (default sound) is no longer used.
+    await androidPlugin?.deleteNotificationChannel(channelId: 'forest_fire_alerts');
   }
 
   static Future<void> showFireAlert({
@@ -78,6 +87,8 @@ class NotificationService {
           importance: Importance.max,
           priority: Priority.max,
           playSound: true,
+          sound: _alarmSound,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
           enableVibration: true,
           ticker: 'Forest Fire Alert',
         );

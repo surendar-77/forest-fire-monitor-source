@@ -13,7 +13,9 @@ export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: numbe
 import type { Firestore, Plain } from "./firestore.js";
 
 /** Must match NotificationService._channelId in the Flutter app. */
-const ANDROID_CHANNEL_ID = "forest_fire_alerts";
+const ANDROID_CHANNEL_ID = "forest_fire_alarm";
+/** android/app/src/main/res/raw/fire_alarm.mp3 (used before Android 8; later the channel sets it). */
+const ANDROID_SOUND = "fire_alarm";
 
 export interface PushOptions {
   adminsOnly?: boolean;
@@ -151,7 +153,7 @@ export async function pushAlert(
               data,
               android: {
                 priority: "HIGH",
-                notification: { channel_id: ANDROID_CHANNEL_ID, sound: "default", tag },
+                notification: { channel_id: ANDROID_CHANNEL_ID, sound: ANDROID_SOUND, tag },
               },
               apns: {
                 headers: { "apns-priority": "10" },
