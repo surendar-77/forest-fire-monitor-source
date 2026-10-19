@@ -42,3 +42,34 @@ export function decideAlert(
 
 /** Alerts that still need someone's attention. */
 export const OPEN_STATUSES = ["ACTIVE", "ACKNOWLEDGED"];
+
+/** An open alert this recent still covers a new detection of the same type. */
+export const ACTIVE_DEDUPE_MS = 10 * 60_000;
+/** Someone is handling it: hold off repeats for longer. */
+export const ACKNOWLEDGED_DEDUPE_MS = 30 * 60_000;
+
+function asTime(value: unknown): number | null {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
+/**
+ * Whether an open alert should stop a new alert for a fresh detection
+ * (fire, smoke, sensor anomaly). Only recent ones do: an alert nobody
+ * resolved days ago must never silence a new fire. Alerts with no usable
+ * time are treated as old.
+ */
+export function blocksNewDetection(alert: Record<string, unknown>, now: Date): boolean {
+  const status = alert.status;
+  const detected = asTime(alert.detectedAt) ?? asTime(alert.timestamp) ?? asTime(alert.createdAt);
+  if (status === "ACKNOWLEDGED") {
+    const since = asTime(alert.acknowledgedAt) ?? detected;
+    return since != null && now.getTime() - since < ACKNOWLEDGED_DEDUPE_MS;
+  }
+  if (status === "ACTIVE") return detected != null && now.getTime() - detected < ACTIVE_DEDUPE_MS;
+  return false;
+}

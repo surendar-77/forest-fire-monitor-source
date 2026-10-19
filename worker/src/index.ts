@@ -14,7 +14,7 @@
  * every minute.
  */
 
-import { AI_FIRE_CONFIDENCE_THRESHOLD, decideAlert, OPEN_STATUSES } from "./alertRules.js";
+import { AI_FIRE_CONFIDENCE_THRESHOLD, blocksNewDetection, decideAlert, OPEN_STATUSES } from "./alertRules.js";
 import {
   hourStats,
   isLearnableHour,
@@ -152,12 +152,19 @@ async function createAlertIfNew(
   severity: string,
   details: Record<string, Plain>,
   knownOpen?: Doc[],
+  /**
+   * For detections (fire, smoke, anomaly): only a recent open alert counts
+   * as a duplicate, so an old unresolved alert can't silence a new fire.
+   * Conditions (offline, satellite) keep "any open alert" to avoid repeats.
+   */
+  recentOnly = false,
 ): Promise<string | null> {
   const open = knownOpen
     ? knownOpen.filter((doc) => doc.data.deviceId === nodeId && doc.data.type === type)
     : await openAlertsFor(ctx, nodeId, type);
 
-  if (open.length > 0) return null;
+  const blocking = recentOnly ? open.filter((doc) => blocksNewDetection(doc.data, ctx.now)) : open;
+  if (blocking.length > 0) return null;
 
   const alertId = `${nodeId}_${type}_${Math.floor(ctx.now.getTime() / 1000)}`;
   await ctx.fs.set(`alerts/${alertId}`, {
@@ -273,7 +280,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         anomalyDriver: anomaly.driver,
         anomalyZ: anomaly.z,
       },
-    });
+    }, undefined, true);
   }
 }
 
@@ -894,7 +901,7 @@ async function handleDeviceAlert(request: Request, env: Env): Promise<Response> 
       aiConfidence: alert.aiConfidence,
       riskScore: alert.riskScore,
     },
-  });
+  }, undefined, true);
 
   if (!alertId) return json(200, { status: "duplicate" });
 
