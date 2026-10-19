@@ -2,9 +2,13 @@
     "name": "Forest Fire Monitor",
     "short_name": "Fire Monitor",
     "start_url": ".",
-    "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
+    "display": "fullscreen",
+    "display_override": [
+        "fullscreen",
+        "standalone"
+    ],
+    "background_color": "#F6F7F6",
+    "theme_color": "#F6F7F6",
     "description": "Real-time forest fire detection and early warning for field officers.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
