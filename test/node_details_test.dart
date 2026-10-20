@@ -111,6 +111,30 @@ void main() {
     expect(find.text('LATEST READINGS'), findsOneWidget);
   });
 
+  testWidgets('a LoRa-only node shows its radio link, not a Wi-Fi error', (
+    tester,
+  ) async {
+    await _show(
+      tester,
+      NodeHealth.fromMap({
+        'ts': DateTime.now().millisecondsSinceEpoch,
+        'link': 'lora',
+        'gw': 'GW-01',
+        'lrssi': -95,
+        'lsnr': 10.5,
+        'sent': 99,
+        'failed': 1,
+        'camAge': 2,
+        'dht1': true,
+        'dht2': true,
+        'mq': 'ok (MQ2 not installed)',
+      }),
+    );
+    expect(find.text('LoRa radio via gateway GW-01'), findsOneWidget);
+    expect(find.text('Excellent · -95 dBm · SNR 10.5 dB'), findsOneWidget);
+    expect(find.text('Not connected'), findsNothing);
+  });
+
   test('signal strength words', () {
     expect(NodeHealth.signal(-50).$2, 'Excellent');
     expect(NodeHealth.signal(-70).$2, 'Fair');

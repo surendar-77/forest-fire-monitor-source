@@ -47,6 +47,15 @@ class NodeHealth {
   final int? loraSent;
   final String? thingSpeak;
 
+  /// "lora" when the node has no internet of its own and a LoRa gateway
+  /// uploads for it; then [gateway], [loraRssi] and [loraSnr] describe the link.
+  final String? link;
+  final String? gateway;
+  final int? loraRssi;
+  final double? loraSnr;
+
+  bool get viaLora => link == 'lora';
+
   const NodeHealth({
     this.time,
     this.uptimeSeconds,
@@ -77,6 +86,10 @@ class NodeHealth {
     this.lora,
     this.loraSent,
     this.thingSpeak,
+    this.link,
+    this.gateway,
+    this.loraRssi,
+    this.loraSnr,
   });
 
   factory NodeHealth.fromMap(Map<Object?, Object?> map) {
@@ -114,6 +127,10 @@ class NodeHealth {
       lora: parseStringOrNull(map['lora']),
       loraSent: asInt(map['loraTx']),
       thingSpeak: parseStringOrNull(map['tsp']),
+      link: parseStringOrNull(map['link']),
+      gateway: parseStringOrNull(map['gw']),
+      loraRssi: asInt(map['lrssi']),
+      loraSnr: parseDoubleOrNull(map['lsnr']),
     );
   }
 
@@ -167,6 +184,15 @@ class NodeHealth {
     if (rssi >= -67) return (3, 'Good');
     if (rssi >= -75) return (2, 'Fair');
     if (rssi >= -85) return (1, 'Weak');
+    return (0, 'Very weak');
+  }
+
+  /// 0-4 bars and a word for a LoRa signal (SF10 hears down to about -132 dBm).
+  static (int, String) loraSignal(int rssi) {
+    if (rssi >= -100) return (4, 'Excellent');
+    if (rssi >= -110) return (3, 'Good');
+    if (rssi >= -120) return (2, 'Fair');
+    if (rssi >= -128) return (1, 'Weak');
     return (0, 'Very weak');
   }
 

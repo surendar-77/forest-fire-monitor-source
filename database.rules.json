@@ -70,6 +70,10 @@
           "loraTx": { ".validate": "newData.isNumber() && newData.val() >= 0" },
           "tsp": { ".validate": "newData.isString() && newData.val().length <= 32" },
           "stuck": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "link": { ".validate": "newData.isString() && newData.val().length <= 8" },
+          "gw": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "lrssi": { ".validate": "newData.isNumber() && newData.val() >= -160 && newData.val() <= 0" },
+          "lsnr": { ".validate": "newData.isNumber() && newData.val() >= -30 && newData.val() <= 30" },
           "loraResets": { ".validate": "newData.isNumber() && newData.val() >= 0" },
           "$other": { ".validate": false }
         },

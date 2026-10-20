@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { alertAllowed, liveValues, parseLoraData, parseLoraPacket } from "./loraData.js";
+import { alertAllowed, liveValues, parseLoraData, parseLoraPacket, sensorReading } from "./loraData.js";
 
 const raw =
   "NODE:1,PKT:42,T1:28.1,H1:66.0,T2:-999.0,H2:69.0,MQ1:770,MQ2:-1,AI:Normal,CF:0.980,RK:12,LV:LOW,UP:3600,WF:1,CAM:3,MQH:0";
@@ -69,4 +69,19 @@ test("live values carry only known readings and say they came by LoRa", () => {
   assert.equal("t2" in v, false);
   assert.equal(v.via, "lora");
   assert.equal(v.ai, "Normal");
+});
+
+test("a packet becomes a reading for the shared path (risk, anomaly, alerts)", () => {
+  const p = parseLoraPacket("NODE:1,PKT:9,T1:31.2,H1:40.0,T2:-999,H2:41.5,MQ1:1200,MQ2:-1,AI:Fire,CF:0.920");
+  assert.ok(typeof p === "object");
+  if (typeof p === "string") return;
+  const r = sensorReading(p, new Date("2026-10-20T12:00:00Z"));
+  assert.equal(r.temperature, 31.2);
+  assert.equal(r.temperature2, null);
+  assert.equal(r.mq2_1, 1200);
+  assert.equal(r.mq2_2, 0);
+  assert.equal(r.aiClass, "Fire");
+  assert.equal(r.fireDetected, true);
+  assert.equal(r.aiConfidence, 0.92);
+  assert.equal(r.isStale, false);
 });

@@ -333,6 +333,7 @@ class _NodeDetailsState extends State<NodeDetails> {
   Widget _wifi(NodeHealth h) {
     final rssi = h.rssi;
     final success = h.uploadSuccessPercent;
+    if (h.viaLora) return _loraLink(h, success);
     return _Section(
       title: 'Wi-Fi and internet',
       children: [
@@ -374,6 +375,43 @@ class _NodeDetailsState extends State<NodeDetails> {
           ),
         if (h.thingSpeak != null)
           _Row(Icons.history, 'History upload', titleCase(h.thingSpeak!)),
+      ],
+    );
+  }
+
+  /// The node has no internet of its own: it sends by LoRa to a gateway.
+  Widget _loraLink(NodeHealth h, int? success) {
+    final rssi = h.loraRssi;
+    return _Section(
+      title: 'Connection',
+      children: [
+        _Row(
+          Icons.settings_input_antenna,
+          'Link',
+          'LoRa radio${h.gateway == null ? '' : ' via gateway ${h.gateway}'}',
+          hint: 'The gateway puts the data online',
+        ),
+        if (rssi != null)
+          Builder(
+            builder: (_) {
+              final (bars, word) = NodeHealth.loraSignal(rssi);
+              return _Row(
+                _signalIcon(bars),
+                'Radio signal at the gateway',
+                '$word · $rssi dBm'
+                    '${h.loraSnr == null ? '' : ' · SNR ${h.loraSnr!.toStringAsFixed(1)} dB'}',
+                color: NodeHealth.signalColor(bars),
+              );
+            },
+          ),
+        if (success != null)
+          _Row(
+            Icons.cloud_upload_outlined,
+            'Gateway uploads',
+            '$success% delivered',
+            hint: '${h.uploadsSent} sent, ${h.uploadsFailed} failed since the gateway started',
+            color: success < 90 ? Colors.orange.shade800 : null,
+          ),
       ],
     );
   }

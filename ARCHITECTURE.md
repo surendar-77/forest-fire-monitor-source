@@ -22,9 +22,9 @@ flowchart TB
         AND["Android APK"]
         WEB["Web app (Firebase Hosting)"]
     end
-    S3 -- every 1 s / 30 s --> RTDB
-    S3 -- every 60 s --> TS
-    S3 -- fire / smoke --> W
+    S3 -- LoRa every 1 s --> GW["LoRa gateway<br/>ESP32 + RA-02 on Wi-Fi"]
+    GW -- live 1 s / health 30 s --> RTDB
+    GW -- /lora/data every 10 s, alerts at once --> W
     TS --> W
     RTDB --> W
     EXT --> W

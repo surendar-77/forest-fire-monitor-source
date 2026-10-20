@@ -66,7 +66,7 @@ flowchart LR
 | Reduce false alarms | ✅ Done | 75% threshold, 2-minute confirmation, per-node baselines, verdicts |
 | Alert the right people in seconds, with clear instructions | ✅ Done | push, alarm, Telegram, fire stations, plain messages |
 | Forecast fire danger from weather (ML) | ✅ Done | Indian-data model, ROC AUC 0.85 on unseen states |
-| Keep working when the node's Wi-Fi fails | ✅ Done | LoRa backup path through a receiver gateway |
+| Work without Wi-Fi at the sensor | ✅ Done | the node sends only by LoRa; a gateway on reliable Wi-Fi puts everything online |
 
 ---
 
@@ -103,15 +103,20 @@ Full setup (Firebase, Cloudflare, secrets, sensors): [docs/DEPLOYMENT.md](docs/D
 
 ## ⚙️ How it works
 
-### The node
+### The node and the LoRa gateway
 
 ```
-ESP32-CAM ──JPEG every 3 s──► ESP32-S3 ──TFLite Micro + ESP-NN──► Fire / Normal / Smoke (≈2.7 s)
-                                │  DHT22 zone 1 + zone 2 (2.5 s) · MQ-2 smoke (1 s, fault detection)
-                                ├─ live values every 1 s ─────► Realtime Database
-                                ├─ board health every 30 s ───► Realtime Database
-                                ├─ fire / smoke alert ────────► backend /alert (≈2 s to phones)
-                                └─ minute summary ────────────► ThingSpeak ──► backend
+ESP32-CAM ──JPEG every 3 s (node's own Wi-Fi "FireDetector")──► ESP32-S3 sensor node
+                                   TFLite Micro + ESP-NN ──► Fire / Normal / Smoke (≈2.7 s)
+                                   DHT22 zone 1 + zone 2 (2.5 s) · MQ-2 smoke (1 s, fault detection)
+                                   └─ LoRa 433 MHz, SF10, 27-byte packet every 1 s (no internet Wi-Fi)
+                                            │
+                                            ▼
+                       LoRa gateway (ESP32 + RA-02 on reliable Wi-Fi)
+                         ├─ live values every packet (1 s) ──► Realtime Database
+                         ├─ node health every 30 s ──────────► Realtime Database
+                         └─ packet every 10 s; alerts at once, then every 5 s ──► backend /lora/data
+                                    (history once a minute, risk, anomaly, air status, alert rules)
 ```
 
 ### The backend (Cloudflare Worker, free)
@@ -146,7 +151,7 @@ Satellite map with live panel → sensor details → Data graphs → Alerts with
 | 🎯 | **Camera accuracy** | *Real fire / False alarm* buttons; accuracy card suggests a better threshold |
 | 🔥 | **Fire danger** | ML chance of fire today and the riskiest hour, adjusted for forest type |
 | 👥 | **Accounts and roles** | open sign-up as viewer; officers respond; admins add sensors and fire stations |
-| 📡 | **LoRa backup** | the node sends all its data by radio; a gateway forwards it, and it takes over live data, history and alerts when the node's Wi-Fi is down |
+| 📡 | **LoRa link** | the node sends all its data by radio every second; a gateway on reliable Wi-Fi puts live data, health, history and alerts online |
 | ⬆️ | **Self-updating** | web and Android apps show "update available" and update in two taps |
 
 <details>

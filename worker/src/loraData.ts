@@ -9,6 +9,8 @@
  * Kept free of Workers APIs so it can be unit-tested.
  */
 
+import type { AiClass, SensorReading } from "./thingspeak.js";
+
 export interface LoraPacket {
   pkt: number | null;
   t1: number | null;
@@ -114,6 +116,27 @@ export function parseLoraData(body: unknown): LoraDataBody | string {
   const packet = parseLoraPacket(b.packet);
   if (typeof packet === "string") return packet;
   return { gateway: b.gateway, key: b.key, node: b.node, rssi: num(b.rssi, -160, 0), snr: num(b.snr, -30, 30), packet };
+}
+
+/** A packet as a reading for the shared processing path. */
+export function sensorReading(p: LoraPacket, now: Date): SensorReading {
+  const ai = p.ai === "Fire" || p.ai === "Normal" || p.ai === "Smoke" ? (p.ai as AiClass) : null;
+  return {
+    temperature: p.t1,
+    humidity: p.h1,
+    temperature2: p.t2,
+    humidity2: p.h2,
+    mq2_1: p.mq1 ?? 0,
+    mq2_2: p.mq2 ?? 0,
+    aiClass: ai,
+    fireDetected: ai === "Fire",
+    smokeDetected: ai === "Smoke",
+    aiConfidence: p.conf ?? 0,
+    timestamp: now,
+    entryId: null,
+    ageSeconds: 0,
+    isStale: false,
+  };
 }
 
 /** The node's own live feed counts as alive if it wrote this recently. */

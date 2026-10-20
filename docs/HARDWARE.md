@@ -57,6 +57,16 @@ first: only one program can hold the port.
 Smoke is scored as a rise above each MQ-2's learned clean-air baseline (+300 warn, +700 high counts) after the
 heater warm-up, because raw levels differ widely between modules.
 
+## LoRa-only node and gateway
+
+Since 2026-10-21 the node does **not** use internet Wi-Fi (`NODE_INTERNET_UPLOADS false`): it keeps its own
+`FireDetector` access point for the camera and sends **all** data by LoRa. The gateway (ESP32 DevKit + RA-02) sits
+on reliable Wi-Fi and writes the node's live values every packet, its health every 30 s (with the radio signal),
+and forwards packets to the backend (`/lora/data`), which saves history once a minute and applies the risk,
+anomaly, air-status and alert rules. Set `NODE_INTERNET_UPLOADS true` to go back to direct Wi-Fi uploads.
+
+Measured (2026-10-21): 91 live updates in 90 s, never more than 1.5 s apart; health and device status via LoRa.
+
 ## LoRa (long range)
 
 | Setting | Value |

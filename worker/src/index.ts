@@ -45,12 +45,13 @@ import { alertMessage, notifyStations, parseFireServices, stationsFor } from "./
 import { Firestore, newDocId, type Doc, type Plain, type Write } from "./firestore.js";
 import { accessToken, type ServiceAccount } from "./google.js";
 import { lookupUser, setClaims } from "./identity.js";
-import { fetchLastFeed, parseFeed } from "./thingspeak.js";
+import { fetchLastFeed, parseFeed, type SensorReading } from "./thingspeak.js";
 import { isHealthAlert, parseHealth, planHealth } from "./health.js";
 import { alertMessageFor, CONFIRMED_MESSAGE } from "./alertMessages.js";
 import { localAir } from "./localAir.js";
 import {
   alertAllowed,
+  sensorReading,
   DIRECT_FRESH_MS,
   LORA_DEVICE_WRITE_MS,
   liveValues,
@@ -262,6 +263,23 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
     return; // nothing new; the 5-minute job turns lastSeen age into STALE/OFFLINE
   }
 
+  await processReading(ctx, channel.nodeId, channel.name ?? channel.nodeId, device, reading, "thingspeak");
+}
+
+/**
+ * One reading from a node, from ThingSpeak or from the LoRa gateway: score it
+ * against the node's baseline, combine with fire danger and terrain, work out
+ * the air at the sensor, save device + history, and apply the alert rules.
+ */
+async function processReading(
+  ctx: Context,
+  nodeId: string,
+  fallbackName: string,
+  device: Doc | null,
+  reading: SensorReading,
+  source: "thingspeak" | "lora",
+): Promise<void> {
+  const devicePath = `devices/${nodeId}`;
   // Score the six sensors against this node's learned baseline, then combine
   // with today's weather fire danger and the node's terrain.
   const anomaly = scoreReading(toAnomalyReading(reading), parseBaseline(device?.data.baseline));
@@ -288,8 +306,8 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
       set: devicePath,
       merge: true,
       data: {
-        deviceId: channel.nodeId,
-        ...(device ? {} : { name: channel.name ?? channel.nodeId }),
+        deviceId: nodeId,
+        ...(device ? {} : { name: fallbackName }),
         status: "ONLINE",
         lastSeen: reading.timestamp,
         temperature: reading.temperature,
@@ -311,6 +329,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         thingspeakEntryId: reading.entryId,
         sensorDataAgeSeconds: reading.ageSeconds,
         sensorDataStale: false,
+        via: source,
       },
     },
     {
@@ -331,6 +350,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         anomalyScore: anomaly.score,
         anomalyLevel: anomaly.level,
         entryId: reading.entryId,
+        via: source,
       },
     },
   ]);
@@ -339,9 +359,9 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
   const decision = decideAlert(reading, anomaly, dangerLevel);
   if (decision) {
     const nodeName =
-      typeof device?.data.name === "string" ? device.data.name : (channel.name ?? channel.nodeId);
+      typeof device?.data.name === "string" ? device.data.name : fallbackName;
     const smokeValues = [reading.mq2_1, reading.mq2_2].filter((v): v is number => typeof v === "number");
-    await createAlertIfNew(ctx, channel.nodeId, decision.type, decision.severity, {
+    await createAlertIfNew(ctx, nodeId, decision.type, decision.severity, {
       message: alertMessageFor(decision.type, {
         nodeName,
         severity: decision.severity,
@@ -1464,48 +1484,13 @@ async function handleLoraData(request: Request, env: Env): Promise<Response> {
     await ctx.rtdb.put(`live/${node}/values`, { ...liveValues(p), ts: { ".sv": "timestamp" } });
   }
 
+  // Device, history and the alert rules once a minute (like ThingSpeak did).
   const meta = await ctx.rtdb.get(`loraMeta/${node}/deviceWriteAt`);
   if (typeof meta !== "number" || now - meta >= LORA_DEVICE_WRITE_MS) {
-    const devicePath = `devices/${data.node}`;
-    const device = await ctx.fs.get(devicePath);
+    const device = await ctx.fs.get(`devices/${data.node}`);
     if (!device) return json(404, { error: "Unknown node." });
-    const reading: Record<string, Plain> = {
-      ts: ctx.now,
-      temperature: p.t1,
-      humidity: p.h1,
-      temperature2: p.t2,
-      humidity2: p.h2,
-      mq2_1: p.mq1,
-      mq2_2: p.mq2,
-      aiClass: p.ai,
-      aiConfidence: p.conf,
-      riskScore: p.risk,
-      fireProbability: p.ai === "Fire" && p.conf != null ? p.conf * 100 : 0,
-      smokeProbability: p.ai === "Smoke" && p.conf != null ? p.conf * 100 : 0,
-      via: "lora",
-    };
-    await ctx.fs.commit([
-      {
-        set: devicePath,
-        merge: true,
-        data: {
-          status: "ONLINE",
-          lastSeen: ctx.now,
-          via: "lora",
-          ...(p.t1 != null ? { temperature: p.t1 } : {}),
-          ...(p.h1 != null ? { humidity: p.h1 } : {}),
-          ...(p.t2 != null ? { temperature2: p.t2 } : {}),
-          ...(p.h2 != null ? { humidity2: p.h2 } : {}),
-          ...(p.mq1 != null ? { mq2Sensor1: p.mq1 } : {}),
-          ...(p.mq2 != null ? { mq2Sensor2: p.mq2 } : {}),
-          ...(p.ai != null ? { aiClass: p.ai, aiConfidence: p.conf ?? 0 } : {}),
-          ...(p.risk != null ? { riskScore: p.risk } : {}),
-          ...(p.level != null ? { riskLevel: p.level } : {}),
-        },
-      },
-      { set: `${devicePath}/readings/${newDocId()}`, data: reading },
-    ]);
     await ctx.rtdb.put(`loraMeta/${node}/deviceWriteAt`, now);
+    await processReading(ctx, data.node, data.node, device, sensorReading(p, ctx.now), "lora");
   }
 
   if (p.alert && alertAllowed(p, AI_FIRE_CONFIDENCE_THRESHOLD)) {
