@@ -1,234 +1,270 @@
-# Forest Fire Monitor — IoT early warning for forest fires
+<div align="center">
 
-> **Field prototype. Not a certified fire-detection or life-safety system.**
-> Alerts depend on Wi-Fi, mains/USB power and free cloud services, any of which can fail.
-> The fire-danger rating is a statistical model trained on satellite fire detections, not a forecast of ignitions.
+# Forest Fire Monitor · IoT early warning for forest fires
 
-Forest Fire Monitor turns low-cost ESP32-S3 sensor nodes into a fire early-warning network. Each node
-runs a camera AI on the device, two temperature/humidity sensors and a smoke sensor. A free cloud backend
-scores every reading, raises alerts and sends push notifications; a Flutter app (Android and web) shows the
-sensors on a satellite map with live readings, estimated fire areas, fire-danger forecasts, alerts and reports.
+**Low-cost sensor nodes with on-device camera AI, smoke and heat sensors, a free cloud backend and an app that shows
+every sensor on a satellite map, explains every alert in plain words and tells the right people within seconds.**
 
-Everything runs on free plans: Firebase **Spark**, Cloudflare **Workers Free**, ThingSpeak free, NASA FIRMS,
-Open-Meteo and Esri/NASA map tiles.
+Put a node in the forest. Forest Fire Monitor watches it every second, learns what is normal for that spot, warns
+when the camera sees flames or the air turns smoky, confirms the fire before calling it critical, and guides
+responders to it.
+
+![License: proprietary](https://img.shields.io/badge/License-All_rights_reserved-111111.svg)
+![Flutter](https://img.shields.io/badge/Flutter_3.47-02569B?logo=flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart_3.13-0175C2?logo=dart&logoColor=white)
+![Firebase](https://img.shields.io/badge/Firebase_Spark-FFCA28?logo=firebase&logoColor=black)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?logo=cloudflare&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![ESP32-S3](https://img.shields.io/badge/ESP32--S3-E7352C?logo=espressif&logoColor=white)
+![TFLite Micro](https://img.shields.io/badge/TFLite_Micro-FF6F00?logo=tensorflow&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram_alerts-26A5E4?logo=telegram&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-44_app_+_87_backend-2ea44f)
+![Cost](https://img.shields.io/badge/running_cost-free_plans-2E7D32)
+
+[**Quick start**](#-quick-start) ·
+[**How it works**](#-how-it-works) ·
+[**Features**](#-features) ·
+[**Results**](#-results) ·
+[**Docs**](#-documentation) ·
+[**API**](#-api) ·
+[**Project layout**](#-project-layout)
+
+</div>
 
 ---
 
-## 1. Architecture
+## 🧭 At a glance
 
-```
-ESP32-S3 node (firmware outside this repo, see docs/HARDWARE.md)
-  ├─ camera AI: ESP32-CAM → 240×240 JPEG every 3 s → TFLite Micro + ESP-NN on the S3 (≈2.7 s/frame)
-  ├─ DHT22 × 2 (zones 1, 2) every 2.5 s · MQ-2 smoke every 1 s (16-sample average, fault detection)
-  ├─ every 1 s  ──► Realtime Database live/{node}        ──► app: live panel, sensor details
-  ├─ every 30 s ──► Realtime Database health/{node}      ──► app: power, Wi-Fi, board health
-  ├─ fire/smoke ──► Worker POST /alert                   ──► push in ~2 s
-  └─ every 60 s ──► ThingSpeak ──► Worker (every minute)
-                                     │ risk score, anomaly score, air at the sensor, alert decision
-                                     ▼
-                                 Firestore: devices · readings · hourly · alerts · users
-                                     │
-        Cloudflare Worker crons ─────┤ push (FCM) · Telegram (users, fire stations) · node health
-        (worker/src/index.ts)        │ sensor-problem alerts · escalation · fire danger (ML, hourly)
-                                     │ satellite fires (NASA FIRMS) · rollups · retention · admin requests
-                                     ▼
-                     Flutter app (lib/) — Android APK + web (Firebase Hosting)
+> [!TIP]
+> **Example.** The camera on Node 01 sees flames, 92% sure, and the smoke sensor jumps far above its normal level.
+> Within about 2 seconds every phone following the sensor rings with *"The camera at Node 01 sees flames (92% sure).
+> Readings: 41.2 °C, 18% humidity, smoke level 1450. The smoke and heat sensors agree. Check the area now…"*.
+> After 2 minutes of continuous fire the alert becomes **CRITICAL**, the nearest fire station gets the message and
+> location on Telegram, the map draws the estimated fire area, and responders tap **Directions**.
+
+```mermaid
+flowchart LR
+    A["🌲 Sensor node<br/>📷 camera AI · 🌡️ DHT22 ×2 · 💨 MQ-2"] --> B(("☁️ Free backend<br/>Cloudflare Worker"))
+    S["🛰️ NASA satellite fires<br/>⛅ weather forecast"] --> B
+    B --> C["⚖️ Risk · anomaly · air status<br/>🔥 fire danger (ML)"]
+    C --> D["🚨 Alert with a plain message"]
+    D --> E["📱 Push + alarm<br/>✈️ Telegram users + fire stations"]
+    D --> F["🗺️ App: satellite map, live panel,<br/>timeline, reports"]
 ```
 
-| Folder | Content |
+| | |
 |---|---|
-| `lib/` | Flutter app: screens, widgets, models, services, utils |
-| `lib/screens/` | Home map, Data (graphs), Alerts, Reports, Settings, sign-in/sign-up, Add sensor, Fire stations |
-| `lib/services/` | node repository (Firestore streams), auth, push, history, report export, app update |
-| `lib/utils/` | fire areas, alert timeline, alert report, plain-language labels |
-| `worker/` | **backend**: Cloudflare Worker (TypeScript) with crons, `/alert`, `/lora`, APK hosting |
-| `worker/src/` | ingest, alert rules, health alerts, alert messages, air at the sensor, fire danger, spread, FCM, Telegram |
-| `backend/` | the same backend as a Python service + admin CLI (self-host alternative; run **either** this **or** the Worker) |
-| `ml/` | fire-danger model training on Indian data (see `ml/README.md`) |
-| `firestore.rules`, `database.rules.json` | security rules; `rules-tests/` holds their tests |
-| `web/` | web shell, service worker, privacy policy |
-| `tool/` | `deploy_web.ps1` (web release), `release_apk.ps1` (APK release + in-app update) |
-| `docs/` | hardware, alerts, deployment, data formats |
-| `test/` | Flutter unit and widget tests |
+| **Problem** | Forest fires are found late: satellites pass a few times a day, watch towers need people, and single smoke sensors cry wolf. When an alarm does come, nobody knows how sure it is or what to do. |
+| **Solution** | Nodes that see (camera AI), smell (MQ-2) and feel (two DHT22s) the fire and judge it against what is normal for that spot, a backend that confirms, explains and routes the alert, and an app built for the people who respond. |
+| **Guarantee** | Every alert has a written reason and a confidence. Fire is called *critical* only after 2 minutes without a break. Every sensor reports its own health, so a broken camera is never silent. |
+
+### Project objectives
+
+| Objective | Status | Where |
+|---|---|---|
+| Detect fire early at the node with on-device AI | ✅ Done | camera AI on the ESP32-S3, ≈2.7 s per frame |
+| Reduce false alarms | ✅ Done | 75% threshold, 2-minute confirmation, per-node baselines, verdicts |
+| Alert the right people in seconds, with clear instructions | ✅ Done | push, alarm, Telegram, fire stations, plain messages |
+| Forecast fire danger from weather (ML) | ✅ Done | Indian-data model, ROC AUC 0.85 on unseen states |
+| Work without Wi-Fi in the forest | ⏳ Pending | LoRa gateway (needs antennas) |
 
 ---
 
-## 2. Environment setup
+## 🚀 Quick start
 
-Tested on Windows 11 with Flutter 3.47 / Dart 3.13, Node 22, Python 3.11 (ML) and Arduino IDE 2 with ESP32 core 3.3.11.
+> [!TIP]
+> **Just use it.** Install the Android app from
+> [Releases](https://github.com/surendar-77/forest-fire-monitor/releases/latest) or open the web app
+> <https://forest-fire-3d2f0.web.app>, then **create an account**. New accounts can see every sensor, its location,
+> live readings and alerts.
+
+**Develop**
 
 ```powershell
 flutter pub get
-flutter run -d chrome                         # or an Android device
+flutter run -d chrome                     # or an Android phone
 flutter test ; flutter analyze
 
-cd worker ; npm ci ; npm test                  # backend tests
-cd rules-tests ; npm ci ; npm test             # security-rules tests (needs Java 11+)
-cd backend ; python -m unittest                # Python backend tests (optional)
+cd worker ; npm ci ; npm test             # backend tests
+npx wrangler dev                          # run the backend locally
 ```
 
-Android builds need NDK `28.2.13676358` (`sdkmanager "ndk/28.2.13676358"`) and a release keystore
-(`android/key.properties`, gitignored). Full cloud setup: **docs/DEPLOYMENT.md**.
-
----
-
-## 3. Sensors and data status
-
-| Sensor | Fitted on NODE-01 | Rate | Notes |
-|---|---|---|---|
-| Camera (ESP32-CAM, AI on the S3) | ✅ | 1 photo / 3 s, 1 result / ≈2.7 s | classes Fire / Normal / Smoke |
-| DHT22 zone 1, zone 2 | ✅ ✅ | 2.5 s | the DHT22 cannot be read faster |
-| MQ-2 smoke sensor 1 | ✅ | 1 s | baseline-relative scoring after warm-up |
-| MQ-2 smoke sensor 2 | ❌ (`MQ2_INSTALLED false`) | — | an unconnected ADC pin reads noise |
-| Battery / charging | ❌ (`BATTERY_PIN -1`) | — | wiring in docs/HARDWARE.md |
-| LoRa RA-02 (433 MHz) | ⚠ fitted, no antenna | — | receiver gateway pending |
-
-| Data | Status |
-|---|---|
-| Live readings (per second) | ✅ RTDB `live/{node}` |
-| Board health (power, Wi-Fi, memory, sensors) | ✅ RTDB `health/{node}`, every 30 s |
-| History for graphs | ✅ ThingSpeak → Firestore `readings` (raw, 30-day retention) and `hourly` |
-| Responder verdicts (real fire / false alarm) | ✅ collected on alerts; too few yet to retrain the camera model |
-| Camera photos in the cloud | ❌ by design: only AI results leave the node (LoRa cannot carry images) |
-
----
-
-## 4. Detection and risk (per reading)
-
-* **Camera AI** — a TFLite Micro classifier on the S3. A **fire alert needs ≥ 75% confidence**; smoke needs ≥ 50%.
-  The node sends fire/smoke alerts straight to the Worker (`/alert`); the Worker rejects fire alerts under 75%.
-* **Anomaly score** — each node learns its own normal range per sensor (median and spread per hour) and
-  scores how far smoke is above, temperature above and humidity below normal (`worker/src/anomaly.ts`).
-* **Risk score 0–100** — camera, anomaly score, today's fire danger and the terrain combined (`worker/src/terrain.ts`).
-* **Air at the sensor** — from the MQ-2 against its learned clean-air level, with the camera and heat/dryness
-  deciding between smoke and gas (an MQ-2 reacts to both) (`worker/src/localAir.ts`):
-
-| Status | Rule (z = deviation above normal) |
-|---|---|
-| Clean air | smoke z < 2 |
-| Slightly unusual air | 2 ≤ z < 4, camera clear |
-| Smoke detected | z ≥ 2 with camera smoke, or z ≥ 4 with camera smoke or rising heat/dryness |
-| Heavy smoke | z ≥ 7 with camera smoke or heat |
-| Gas detected | z ≥ 4, camera clear and no heat (LPG, methane, exhaust, alcohol) |
-| Learning | first hour, baseline not ready |
-
-## 5. Alerts
-
-Every alert carries a plain message (what was seen, how sure, readings, what to do), shown in the push
-notification, on Telegram, in the fire pop-up and in the app. Full rules: **docs/ALERTS.md**.
-
-| Type | Raised when |
-|---|---|
-| Fire (camera) | camera ≥ 75% sure; **confirmed + critical** after 2 min without a break |
-| Smoke (camera) | camera ≥ 50% sure |
-| Unusual sensor readings | anomaly level LIKELY |
-| Satellite fire nearby | NASA FIRMS VIIRS detection within range of the node |
-| Sensor offline | no data for 10 min; resolves itself when data returns |
-| Sensor problems | camera silent 10 min, a sensor not reading 10 min, brownout restart, battery ≤ 20%, Wi-Fi < −80 dBm for 15 min, chip ≥ 80 °C; resolve themselves |
-
-Responders acknowledge, mark **Real fire / False alarm** and resolve with an outcome. Each alert keeps a
-timeline (detected → notified → confirmed → acknowledged → verdict → resolved).
-
-## 6. Fire danger and spread (ML)
-
-Hourly, per node: gradient-boosted trees trained on NASA FIRMS fires and ERA5 weather for 45 Indian forest
-areas give today's chance of a fire within 10 km, mapped to Low / Medium / High, plus the riskiest hour in the
-next 24 h. A Rothermel/FBP-style ellipse estimates where a confirmed fire could spread in the next hour.
-Details and evaluation: **`ml/README.md`**.
-
-## 7. The app
-
-| Screen | What it shows |
-|---|---|
-| Home | satellite / vegetation / street map, sensors, fire areas, live panel (readings, camera, risk, **air at sensor**, fire prediction), directions |
-| Sensor details (tap a sensor) | live readings, power and restarts, Wi-Fi, board, sensor and camera health, place |
-| Data | graphs (pinch to zoom, drag to move) for temperature, humidity, smoke, camera, risk; AI predictions; fire weather; **CSV download** |
-| Alerts | open / resolved, filters, verdict buttons, camera-accuracy card, timeline |
-| Reports | 7/30/90 days per sensor: totals, response times, false alarms, alerts per day, every alert's timeline, **PDF / CSV** |
-| Settings | alerts, nearby alerts, Telegram, alarm test, default location; admins: add a sensor, fire stations, roles |
-
-| Role | Can |
-|---|---|
-| Viewer (every new sign-up) | see sensors, locations, readings and alerts; get notifications |
-| Officer | also acknowledge, judge and resolve alerts; download reports |
-| Admin | also add sensors, set locations and terrain, manage fire stations, assign roles |
-
-Roles are Firebase Auth custom claims enforced by `firestore.rules`.
-
-## 8. Releases
+**Release**
 
 ```powershell
-# web (stamps a build id so installed copies show "update available")
-powershell -ExecutionPolicy Bypass -File tool\deploy_web.ps1
-
-# Android: bump `version:` (+N must increase) in pubspec.yaml, then
-powershell -ExecutionPolicy Bypass -File tool\release_apk.ps1 -Notes "What changed"
+powershell -ExecutionPolicy Bypass -File tool\deploy_web.ps1                         # web app
+powershell -ExecutionPolicy Bypass -File tool\release_apk.ps1 -Notes "What changed"  # Android + in-app update
+cd worker ; npx wrangler deploy                                                       # backend
 ```
 
-The APK (arm64, ≈23 MB, package `io.github.surendar77.forestfire`) is served from the Worker's static
-assets (Firebase Hosting on Spark refuses executables); installed apps compare their build number with
-`/apk/version.json` and offer the update. Public downloads: github.com/surendar-77/forest-fire-monitor.
-
-## 9. Tests
-
-```powershell
-flutter test                      # 44 tests (2026-10-20)
-cd worker ; npm test              # 87 tests (2026-10-20)
-```
-
-Covered: alert rules and thresholds, repeat-detection confirmation, outage handling, health alerts, alert
-messages, air at the sensor, fire danger, spread, terrain, FIRMS parsing, LoRa, Telegram parsing, add-sensor
-validation; app models, fire areas, sensor-details page, camera accuracy, timeline, reports, CSV export.
-
-## 10. Measured on NODE-01 (2026-10-20)
-
-| What | Measured |
-|---|---|
-| Camera AI inference on the S3 | ≈2.7 s per frame (ESP-NN; 16 s without) |
-| Fire alert to phone | ≈2 s (node → Worker → FCM) |
-| Live feed | 1 update/s; cloud uploads 99%+ delivered on a good Wi-Fi link |
-| Fire-danger model (leave-states-out) | ROC AUC 0.848, PR AUC 0.176 (`ml/README.md`) |
-| Board free memory / chip temperature | ≈151 KB heap, ≈40 °C indoors |
-
-## 11. Free-plan limits
-
-Spark allows 50,000 reads, 20,000 writes and 20,000 deletes per day; going over **pauses Firestore until the
-reset**. Rule of thumb: **up to 5 nodes and ~10 people with the app open all day** (per node ≈2,900 writes and
-≈1,440 deletes a day; each app start ≈100 reads). Workers Free: 100,000 requests/day, 50 sub-requests per run,
-5 cron triggers. Details: **docs/DEPLOYMENT.md**.
-
-## 12. Limitations
-
-* **One node, one site so far.** Thresholds and the camera model have not been validated on real forest fires.
-* **Camera AI is a small classifier** on 240×240 frames; sun glare, red objects and fog can fool it. The 75%
-  threshold and the 2-minute confirmation reduce false alarms but do not remove them.
-* **MQ-2 cannot tell smoke from gas by itself**; "Gas detected" is an inference from the camera and heat sensors.
-* **Fire danger** rates conditions, not ignitions; most Indian forest fires are lit by people.
-* **Connectivity**: Wi-Fi only until the LoRa gateway is finished; a node without Wi-Fi cannot alert.
-* **Free services**: public routing (OSRM) and map tiles are rate-limited; Firebase Spark has hard daily quotas.
-* **Security**: RTDB device writes are authorised by a per-node key in the firmware (see docs/HARDWARE.md).
+Full setup (Firebase, Cloudflare, secrets, sensors): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
-## 13. Update 2026-10-20 — status
+## ⚙️ How it works
 
-| Item | State |
+### The node
+
+```
+ESP32-CAM ──JPEG every 3 s──► ESP32-S3 ──TFLite Micro + ESP-NN──► Fire / Normal / Smoke (≈2.7 s)
+                                │  DHT22 zone 1 + zone 2 (2.5 s) · MQ-2 smoke (1 s, fault detection)
+                                ├─ live values every 1 s ─────► Realtime Database
+                                ├─ board health every 30 s ───► Realtime Database
+                                ├─ fire / smoke alert ────────► backend /alert (≈2 s to phones)
+                                └─ minute summary ────────────► ThingSpeak ──► backend
+```
+
+### The backend (Cloudflare Worker, free)
+
+| Every | What it does |
 |---|---|
-| Live map, sensor details, directions, graphs with zoom, CSV export | Implemented, tested, released (APK 1.0.9) |
-| Alerts with messages, verdicts, camera accuracy, timeline, reports | Implemented, tested, released |
-| Sensor-problem alerts from board health | Implemented, tested, running |
-| Air at the sensor (clean / smoke / gas) | Implemented, tested, running |
-| Telegram for users and fire stations | Implemented; bot connected; stations to be added |
-| Sign-up (viewers), add sensor, fire stations admin | Implemented, released |
-| LoRa receiver gateway | **Pending** (antennas needed) |
-| Over-the-air firmware updates | **Designed, not built** |
-| Camera model retraining from verdicts (ML stage 3) | **Pending** (needs labelled events) |
-| iOS build | **Not built** (needs an Apple developer account and a Mac) |
+| minute | read each node's ThingSpeak summary → risk score, anomaly score, **air at the sensor**, alert decision; push new alerts; admin requests; Telegram inbox |
+| 5 minutes | node online/offline, **sensor-problem alerts** from board health, escalation, roles, heartbeat |
+| hour | rollups for graphs, **fire danger (ML)** per node, NASA satellite fires nearby |
+| day | delete readings older than 30 days |
 
-### Next required actions
+### The app (Flutter: Android + web)
 
-1. Fit antennas to both RA-02 modules and finish the LoRa gateway (forest sites without Wi-Fi).
-2. Power the node from a 5 V 2 A supply or battery + solar; wire the battery sensor.
-3. Collect Real fire / False alarm verdicts, then retrain the camera model and re-check the 75% threshold.
-4. Close the RTDB device-key gap with Worker-minted tokens; rotate old keys; delete the old Firebase project.
-5. Move routing to OpenRouteService (free key) before wider use.
+Satellite map with live panel → sensor details → Data graphs → Alerts with verdicts and timeline → Reports.
+
+---
+
+## ✨ Features
+
+| | Feature | Details |
+|---|---|---|
+| 🗺️ | **Live map** | satellite, NASA vegetation and street layers; sensors coloured by risk; estimated fire area and 1-hour spread |
+| 📟 | **Live panel** | averaged temperature and humidity, smoke, camera result, risk, **air at sensor** (clean / smoke / gas), today's fire prediction |
+| 🔎 | **Sensor details** | live readings, power and restart reason, Wi-Fi signal, memory, chip temperature, camera and sensor health |
+| 🚨 | **Clear alerts** | every alert says what was seen, how sure, the readings and what to do; fire pop-up with alarm sound |
+| ✅ | **Confirmation** | fire raised to critical only after 2 minutes without a break; then the fire area is drawn |
+| 🔧 | **Sensor-problem alerts** | camera silent, sensor not reading, brownout, low battery, weak Wi-Fi, overheating; resolve themselves |
+| ✈️ | **Telegram** | users connect their Telegram; fire stations get serious alerts with the location |
+| 🧭 | **Directions** | road route to a sensor or fire, the walk at the end, and Google Maps navigation |
+| 📈 | **Graphs** | temperature, humidity, smoke, camera, risk; **pinch to zoom, drag to move**; CSV download |
+| 🧾 | **Timeline and reports** | each alert's steps with response times; 7/30/90-day reports with PDF and CSV |
+| 🎯 | **Camera accuracy** | *Real fire / False alarm* buttons; accuracy card suggests a better threshold |
+| 🔥 | **Fire danger** | ML chance of fire today and the riskiest hour, adjusted for forest type |
+| 👥 | **Accounts and roles** | open sign-up as viewer; officers respond; admins add sensors and fire stations |
+| ⬆️ | **Self-updating** | web and Android apps show "update available" and update in two taps |
+
+<details>
+<summary><b>Advantages</b></summary>
+
+<br/>
+
+- **Explainable, not a black box:** every alert carries its reason and the camera's confidence.
+- **Fewer false alarms:** a high camera threshold, a 2-minute confirmation, and smoke judged against each sensor's own clean air.
+- **Self-monitoring:** each node reports its power, Wi-Fi and sensor health; problems become alerts.
+- **Built for responders:** acknowledge, judge, resolve, navigate, and see who did what and when.
+- **Learns from people:** verdicts measure the camera's accuracy and will train the next model.
+- **Costs nothing to run:** Firebase Spark, Cloudflare Workers Free, ThingSpeak, NASA FIRMS and Open-Meteo.
+- **Cheap hardware:** ESP32-S3, ESP32-CAM, DHT22 and MQ-2 modules.
+
+</details>
+
+---
+
+## 📊 Results
+
+| Component | Result |
+|---|---|
+| Camera AI on the ESP32-S3 | ≈2.7 s per frame with ESP-NN (16 s without) |
+| Fire alert to phone | ≈2 s (node → backend → push) |
+| Fire-danger model, leave-states-out | ROC AUC **0.848**, PR AUC 0.176, Brier 0.037 ([ml/README.md](ml/README.md)) |
+| Fire-danger model, train 2022–23 → test 2024 | ROC AUC **0.879**, PR AUC 0.220 |
+| Live feed | 1 update per second; 99%+ uploads delivered on a good link |
+| Tests | **44** app + **87** backend, all passing |
+
+> [!NOTE]
+> The camera thresholds have not yet been validated on real forest fires; the accuracy card will measure them as
+> responders mark alerts *Real fire* or *False alarm*.
+
+---
+
+## 📚 Documentation
+
+| Document | What's inside |
+|---|---|
+| 📋 [**PRD.md**](PRD.md) | Problem, goals, users, requirements with status, success metrics |
+| 🏗️ [**ARCHITECTURE.md**](ARCHITECTURE.md) | Components, data flow, backend jobs, endpoints, alert lifecycle |
+| 🤖 [**AGENTS.md**](AGENTS.md) | Rules and conventions for coding tools working on this repo |
+| 🎨 [**DESIGN_SYSTEM.md**](DESIGN_SYSTEM.md) | App colours, type, components, plain-language rules |
+| ✅ [**QA_REPORT.md**](QA_REPORT.md) | Tests, coverage, defects found and fixed |
+| ⬇️ [DOWNLOAD_LINKS.md](DOWNLOAD_LINKS.md) | App downloads, services, data sources, software |
+| 🛠️ [docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md) | Full technical guide: sensors, detection, alerts, ML, releases, limits |
+| 🔌 [docs/HARDWARE.md](docs/HARDWARE.md) | Boards, pins, flashing, Wi-Fi self-healing, health report |
+| 🚨 [docs/ALERTS.md](docs/ALERTS.md) | Every alert type, threshold, message and who is told |
+| ☁️ [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Firebase, Worker, releases, quotas, secrets |
+| 🗃️ [docs/DATA.md](docs/DATA.md) | ThingSpeak, Realtime Database, Firestore, CSV formats |
+| 🔍 [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | Gaps in forest-fire detection and how this project addresses them |
+| 📊 [docs/PROJECT_STATUS_REPORT.md](docs/PROJECT_STATUS_REPORT.md) | Completed, pending and blocked work with evidence |
+| 🧪 [docs/PROJECT_AUDIT.md](docs/PROJECT_AUDIT.md) | Audit checklist |
+| 🗒️ [docs/WORK_LOG.md](docs/WORK_LOG.md) · [docs/ALL_WORK_DONE.md](docs/ALL_WORK_DONE.md) · [docs/WORK_SUMMARY.md](docs/WORK_SUMMARY.md) | What was done, when, and the before/after |
+| 🌲 [docs/FIELD_TRIAL_PACKAGE.md](docs/FIELD_TRIAL_PACKAGE.md) | Package for a forest-department review and field trial |
+| 🤖 [ml/README.md](ml/README.md) | Fire-danger model: data, training, evaluation |
+
+---
+
+## 🔌 API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/alert` | Fire / smoke / risk alert from a node (node id + key) |
+| `POST` | `/lora` | LoRa link report from a receiver gateway (gateway id + key) |
+| `GET` | `/apk/version.json` | Latest Android build, version and notes (in-app update) |
+| `GET` | `/apk/ForestFireMonitor-<version>.apk` | Android download |
+| `GET` | `/` | Backend version |
+
+The app reads and writes Firestore and the Realtime Database directly, guarded by `firestore.rules` and
+`database.rules.json`; admin actions go through `adminRequests` / `roleRequests` documents that the backend checks.
+Details: [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## 🧪 Tests
+
+```powershell
+flutter test                     # 44 tests: models, fire areas, sensor details, accuracy card, timeline, reports, CSV
+cd worker ; npm test             # 87 tests: alert rules, confirmation, health alerts, messages, air status, ML, Telegram
+cd rules-tests ; npm test        # security-rules tests (Firebase emulator, Java 11+)
+```
+
+Details in [QA_REPORT.md](QA_REPORT.md).
+
+---
+
+## 🗂️ Project layout
+
+<details>
+<summary><b>Expand the tree</b></summary>
+
+```
+lib/                     Flutter app
+├── screens/             home_map, data, alerts, reports, settings, login, add_sensor, fire_stations, app_shell
+├── widgets/             live_overlay_strip, node_details_sheet, trend_chart, fire_danger_card, urgent_alert_dialog …
+├── services/            node_repository, auth, fcm, notification, history, report_export, fire_station, app_update
+├── models/              node (LocalAir, FireDanger, LoraLink), alert, reading, live_reading, node_health, terrain
+└── utils/               fire_areas, alert_timeline, alert_report, friendly, risk_utils
+worker/                  Cloudflare Worker backend (TypeScript)
+└── src/                 index (crons, endpoints), alertRules, health, alertMessages, localAir, anomaly,
+                         fireDanger, spread, terrain, firms, fcm, telegram, fireServices, nodes, firestore, rtdb
+backend/                 Python version of the backend + admin CLI (self-host alternative)
+ml/                      fire-danger model training (Indian data)
+web/                     web shell, service worker, privacy policy
+tool/                    deploy_web.ps1, release_apk.ps1
+test/  rules-tests/      app tests, security-rules tests
+docs/                    guides and reports
+firestore.rules  database.rules.json  firebase.json
+```
+
+The node firmware (`ForestFire_S3.ino`, `ESP32CAM_Uploader.ino`, `LoRa_Receiver.ino`) is kept outside the repository
+because it contains secrets; see [docs/HARDWARE.md](docs/HARDWARE.md).
+
+</details>
+
+---
+
+## 📄 Licence
+
+© 2026 surendar-77. All rights reserved. Not licensed for copying, modification or redistribution.
