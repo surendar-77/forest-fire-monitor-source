@@ -23,6 +23,7 @@
           "ai": { ".validate": "newData.isString() && newData.val().length <= 10" },
           "conf": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1" },
           "up": { ".validate": "newData.isNumber()" },
+          "via": { ".validate": "newData.isString() && newData.val().length <= 8" },
           "$other": { ".validate": false }
         },
 

@@ -1448,14 +1448,21 @@ async function handleLoraData(request: Request, env: Env): Promise<Response> {
     ts: { ".sv": "timestamp" },
   });
 
-  const liveTs = await ctx.rtdb.get(`live/${node}/values/ts`);
+  const live = await ctx.rtdb.get(`live/${node}/values`);
+  const liveTs = live && typeof live === "object" ? (live as Record<string, unknown>).ts : null;
+  const liveVia = live && typeof live === "object" ? (live as Record<string, unknown>).via : null;
   const now = Date.now();
-  if (typeof liveTs === "number" && now - liveTs < DIRECT_FRESH_MS) {
+  const fresh = typeof liveTs === "number" && now - liveTs < DIRECT_FRESH_MS;
+  if (fresh && liveVia !== "lora") {
     return json(200, { status: "stored", fallback: false });
   }
 
-  // The node's own feed is quiet: LoRa takes over.
-  await ctx.rtdb.put(`live/${node}/values`, { ...liveValues(p), ts: { ".sv": "timestamp" } });
+  // The node's own feed is quiet: LoRa takes over. (The gateway writes the
+  // live values itself every second while the node reports Wi-Fi down; this
+  // covers a node that has Wi-Fi but no internet.)
+  if (!fresh) {
+    await ctx.rtdb.put(`live/${node}/values`, { ...liveValues(p), ts: { ".sv": "timestamp" } });
+  }
 
   const meta = await ctx.rtdb.get(`loraMeta/${node}/deviceWriteAt`);
   if (typeof meta !== "number" || now - meta >= LORA_DEVICE_WRITE_MS) {

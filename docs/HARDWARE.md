@@ -57,6 +57,28 @@ first: only one program can hold the port.
 Smoke is scored as a rise above each MQ-2's learned clean-air baseline (+300 warn, +700 high counts) after the
 heater warm-up, because raw levels differ widely between modules.
 
+## LoRa (long range)
+
+| Setting | Value |
+|---|---|
+| Frequency / bandwidth / coding rate | 433 MHz / 125 kHz / 4/5, CRC on |
+| Spreading factor | **SF10** by default; `lora sf 7..12` on both boards (saved) |
+| Transmit power | 10 dBm — the licence-free limit for 433 MHz in India (10 mW) |
+| Packet | 22-byte binary (all readings, AI, risk, level, Wi-Fi, camera age, smoke health, alert); 0.37 s on air at SF10 |
+| Rate | every 1 s up to SF10, 2 s at SF11, 3.5 s at SF12 |
+| Receiver sensitivity | about −123 dBm at SF7, −132 dBm at SF10, −137 dBm at SF12 |
+
+Range: free-space loss at 433 MHz over 5 km is ≈99 dB, so with 10 dBm and the small spring antennas the
+signal is ≈−90 dBm in **clear line of sight** — enough at SF10. Forest and terrain add tens of dB: raise both
+antennas (pole, roof, hilltop), use proper 433 MHz whips or a Yagi on the gateway, and step up to SF11/SF12 if
+needed. For more power legally, use the 865–867 MHz band (up to 1 W) with 868 MHz modules.
+
+Gateway behaviour: forwards the newest packet to `/lora/data` every 10 s (alerts at once); while a packet says
+the node's Wi-Fi is down (`WF:0`) it also writes the node's live values itself every packet. Its blue LED blinks
+on every packet received (field tests without a laptop). Serial: `lora sf N`, `lora status` (both boards).
+
+Measured at the desk (2026-10-20): SF10, 100% of packets, RSSI ≈ −95 dBm, SNR ≈ +11 dB, frequency error ≈ 0.4 kHz.
+
 ## Wi-Fi and self-healing
 
 * Networks: the main network, a backup network, and one saved from the serial console. A failed join rotates
