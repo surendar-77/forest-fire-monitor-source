@@ -47,6 +47,8 @@ import { accessToken, type ServiceAccount } from "./google.js";
 import { lookupUser, setClaims } from "./identity.js";
 import { fetchLastFeed, parseFeed } from "./thingspeak.js";
 import { isHealthAlert, parseHealth, planHealth } from "./health.js";
+import { alertMessageFor, CONFIRMED_MESSAGE } from "./alertMessages.js";
+import { localAir } from "./localAir.js";
 import { newNodeKey, parseAddNode } from "./nodes.js";
 import { Rtdb } from "./rtdb.js";
 import { botUsername, chatsFromUpdates, getUpdates, sendText, type BotCommand } from "./telegram.js";
@@ -180,6 +182,8 @@ async function recordRepeatDetection(ctx: Context, alert: Doc): Promise<void> {
   if (update.confirmNow) {
     fields.confirmedAt = ctx.now;
     fields.severity = "CRITICAL";
+    const before = typeof alert.data.message === "string" ? ` ${alert.data.message}` : "";
+    fields.message = `${CONFIRMED_MESSAGE}${before}`;
   }
   await ctx.fs.set(alert.path, fields, true);
   if (!update.confirmNow) return;
@@ -265,6 +269,12 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
   });
   const fireProbability = reading.fireDetected ? reading.aiConfidence * 100 : 0;
   const smokeProbability = reading.smokeDetected ? reading.aiConfidence * 100 : 0;
+  const air = localAir(
+    anomaly,
+    reading.aiClass,
+    reading.aiConfidence,
+    reading.mq2_1 > 0 || reading.mq2_2 > 0,
+  );
 
   await ctx.fs.commit([
     {
@@ -290,6 +300,7 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
         riskLevel: risk.level,
         riskDriver: risk.driver,
         anomaly: { score: anomaly.score, level: anomaly.level, z: anomaly.z, driver: anomaly.driver },
+        localAir: { ...air, at: reading.timestamp },
         thingspeakEntryId: reading.entryId,
         sensorDataAgeSeconds: reading.ageSeconds,
         sensorDataStale: false,
@@ -320,7 +331,21 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
   const dangerLevel = typeof danger?.level === "string" ? danger.level : null;
   const decision = decideAlert(reading, anomaly, dangerLevel);
   if (decision) {
+    const nodeName =
+      typeof device?.data.name === "string" ? device.data.name : (channel.name ?? channel.nodeId);
+    const smokeValues = [reading.mq2_1, reading.mq2_2].filter((v): v is number => typeof v === "number");
     await createAlertIfNew(ctx, channel.nodeId, decision.type, decision.severity, {
+      message: alertMessageFor(decision.type, {
+        nodeName,
+        severity: decision.severity,
+        aiConfidence: decision.type === "FIRE" || decision.type === "SMOKE" ? reading.aiConfidence : null,
+        temperature: reading.temperature,
+        humidity: reading.humidity,
+        smoke: smokeValues.length > 0 ? Math.max(...smokeValues) : null,
+        anomalyDriver: anomaly.driver,
+        anomalyZ: anomaly.driver ? anomaly.z[anomaly.driver] ?? null : null,
+        dangerLevel,
+      }),
       fireProbability,
       smokeProbability,
       temperature: reading.temperature ?? 0,
@@ -549,6 +574,11 @@ async function nodeHealth(ctx: Context, devices: Doc[], open: Doc[]): Promise<vo
           "NODE_OFFLINE",
           "HIGH",
           {
+            message: alertMessageFor("NODE_OFFLINE", {
+              nodeName: typeof data.name === "string" ? data.name : device.id,
+              severity: "HIGH",
+              lastSeen,
+            }),
             fireProbability: 0,
             smokeProbability: 0,
             temperature: asNumber(data.temperature),
@@ -1203,6 +1233,14 @@ async function fireDangerJob(ctx: Context, devices: Doc[]): Promise<void> {
           const dangerLevel = danger.status === "fulfilled" ? danger.value.level : null;
           await run(`satellite alert ${device.id}`, () =>
             createAlertIfNew(ctx, device.id, "SATELLITE_HOTSPOT", dangerLevel === "HIGH" ? "CRITICAL" : "HIGH", {
+              message: alertMessageFor("SATELLITE_HOTSPOT", {
+                nodeName: typeof device.data.name === "string" ? device.data.name : device.id,
+                severity: dangerLevel === "HIGH" ? "CRITICAL" : "HIGH",
+                distanceKm: typeof close.distanceKm === "number" ? close.distanceKm : null,
+                satellite: typeof close.satellite === "string" ? close.satellite : null,
+                satelliteConfidence: typeof close.confidence === "string" ? close.confidence : null,
+                dangerLevel: typeof dangerLevel === "string" ? dangerLevel : null,
+              }),
               fireProbability: 0,
               smokeProbability: 0,
               temperature: asNumber(device.data.temperature),
@@ -1296,7 +1334,19 @@ async function handleDeviceAlert(request: Request, env: Env): Promise<Response> 
   }
 
   const device = await ctx.fs.get(`devices/${alert.node}`);
+  const smokeValues = [alert.mq2_1, alert.mq2_2].filter((v): v is number => typeof v === "number");
   const alertId = await createAlertIfNew(ctx, alert.node, alert.type, alert.severity, {
+    message: alertMessageFor(alert.type, {
+      nodeName: typeof device?.data.name === "string" ? device.data.name : alert.node,
+      severity: alert.severity,
+      aiConfidence: alert.aiConfidence,
+      temperature: alert.temperature,
+      humidity: alert.humidity,
+      smoke: smokeValues.length > 0 ? Math.max(...smokeValues) : null,
+      dangerLevel: typeof (device?.data.danger as Record<string, Plain> | undefined)?.level === "string"
+        ? String((device!.data.danger as Record<string, Plain>).level)
+        : null,
+    }),
     source: "device",
     fireProbability: alert.aiClass === "Fire" ? confidence * 100 : 0,
     smokeProbability: alert.aiClass === "Smoke" ? confidence * 100 : 0,

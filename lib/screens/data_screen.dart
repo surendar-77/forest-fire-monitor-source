@@ -8,6 +8,7 @@ import '../models/reading_model.dart';
 import '../services/auth_service.dart';
 import '../services/data_source_controller.dart';
 import '../services/history_service.dart';
+import '../services/report_export_service.dart';
 import '../widgets/fire_danger_card.dart';
 import '../widgets/node_selector.dart';
 import '../widgets/trend_chart.dart';
@@ -31,6 +32,40 @@ class _DataScreenState extends State<DataScreen> {
   String? _loadedFor;
   Future<List<ReadingModel>>? _readings;
   Future<List<ReadingModel>>? _predictions;
+  final TransformationController _aiZoom = TransformationController();
+  bool _exporting = false;
+
+  @override
+  void dispose() {
+    _aiZoom.dispose();
+    super.dispose();
+  }
+
+  /// Every reading behind the graphs for this period, as a CSV file.
+  Future<void> _downloadCsv(NodeModel node) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _exporting = true);
+    try {
+      final readings = await _readings ?? const <ReadingModel>[];
+      if (readings.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No readings in this period.')),
+        );
+        return;
+      }
+      await ReportExportService.shareReadingsCsv(
+        readings,
+        nodeId: node.id,
+        nodeName: node.name,
+        rangeLabel: _range.label,
+        hourly: _range.usesHourlyRollup,
+      );
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $error')));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   void _load(String nodeId) {
     final key = '$nodeId/${_range.name}';
@@ -112,11 +147,32 @@ class _DataScreenState extends State<DataScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              Text(
-                _range == HistoryRange.hour
-                    ? 'Every reading (about one a minute).'
-                    : 'Hourly averages; smoke, camera and risk show each hour\'s peak.',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _range == HistoryRange.hour
+                          ? 'Every reading (about one a minute). Pinch a graph to zoom.'
+                          : 'Hourly averages; smoke, camera and risk show each hour\'s peak. '
+                                'Pinch a graph to zoom.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _exporting ? null : () => _downloadCsv(node),
+                    icon: _exporting
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('CSV'),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               FutureBuilder<List<ReadingModel>>(
@@ -327,6 +383,7 @@ class _DataScreenState extends State<DataScreen> {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
+            ChartZoomReset(controller: _aiZoom),
           ],
         ),
         const SizedBox(height: 6),
@@ -339,6 +396,7 @@ class _DataScreenState extends State<DataScreen> {
         SizedBox(
           height: 190,
           child: LineChart(
+            transformationConfig: chartZoomConfig(_aiZoom),
             LineChartData(
               minY: 0,
               maxY: 100,

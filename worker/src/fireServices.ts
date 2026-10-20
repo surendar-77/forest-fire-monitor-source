@@ -11,6 +11,7 @@
  */
 
 import { distanceKm } from "./fcm.js";
+import { isHealthAlert } from "./health.js";
 import type { Plain } from "./firestore.js";
 
 export interface Station {
@@ -73,14 +74,14 @@ export function alertMessage(alert: Record<string, Plain>, nodeName: string): st
           ? "Smoke/heat anomaly on sensors"
           : alert.type === "NODE_OFFLINE"
             ? "Sensor went offline"
-          : typeof alert.message === "string"
+          : isHealthAlert(alert.type)
             ? "Sensor problem"
           : alert.type === "SATELLITE_HOTSPOT"
             ? "Satellite fire detection (NASA VIIRS)"
             : String(alert.type ?? "Fire alert");
 
   const lines = [
-    `${typeof alert.message === "string" ? "🔧" : "🔥"} ${alert.severity ?? "HIGH"} · ${kind}`,
+    `${isHealthAlert(alert.type) ? "🔧" : alert.type === "NODE_OFFLINE" ? "📴" : "🔥"} ${alert.severity ?? "HIGH"} · ${kind}`,
     `Node: ${nodeName} (${alert.deviceId ?? "?"})`,
   ];
   if (typeof alert.message === "string") lines.push(alert.message);

@@ -242,6 +242,16 @@ class _NodeDetailsState extends State<NodeDetails> {
           fresh && live.smoke1 != null ? '${live.smoke1}' : '--',
           hint: 'Raw level, 0-4095; rises with smoke',
         ),
+        if (widget.node.localAir != null)
+          _Row(
+            widget.node.localAir!.icon,
+            'Air at the sensor',
+            widget.node.localAir!.label,
+            hint: widget.node.localAir!.detail,
+            color: widget.node.localAir!.status == 'CLEAN'
+                ? null
+                : widget.node.localAir!.color,
+          ),
         _Row(
           Icons.local_fire_department_outlined,
           'Fire risk',

@@ -80,6 +80,18 @@ class AlertModel {
   /// Camera AI confidence (0-1) when the alert came from the camera.
   final double? aiConfidence;
 
+  /// Timeline: who did what, and when (all optional).
+  final DateTime? pushedAt;
+  final DateTime? escalatedAt;
+  final int escalationLevel;
+  final DateTime? fireServicesNotifiedAt;
+  final List<String> fireServicesNotified;
+  final String? verdictBy;
+  final DateTime? verdictAt;
+
+  /// How many times the sensor reported it (repeats extend the alert).
+  final int detections;
+
   const AlertModel({
     required this.id,
     required this.deviceId,
@@ -104,7 +116,22 @@ class AlertModel {
     this.verdict,
     this.message,
     this.aiConfidence,
+    this.pushedAt,
+    this.escalatedAt,
+    this.escalationLevel = 0,
+    this.fireServicesNotifiedAt,
+    this.fireServicesNotified = const [],
+    this.verdictBy,
+    this.verdictAt,
+    this.detections = 1,
   });
+
+  /// Detection to someone acknowledging it.
+  Duration? get timeToAcknowledge =>
+      acknowledgedAt?.difference(detectedAt);
+
+  /// Detection to resolution.
+  Duration? get timeToResolve => resolvedAt?.difference(detectedAt);
 
   /// Raised by the camera AI (fire or smoke).
   bool get isCamera => type == 'FIRE' || type == 'SMOKE';
@@ -157,6 +184,14 @@ class AlertModel {
       verdict: verdict,
       message: message,
       aiConfidence: aiConfidence,
+      pushedAt: pushedAt,
+      escalatedAt: escalatedAt,
+      escalationLevel: escalationLevel,
+      fireServicesNotifiedAt: fireServicesNotifiedAt,
+      fireServicesNotified: fireServicesNotified,
+      verdictBy: verdictBy,
+      verdictAt: verdictAt,
+      detections: detections,
     );
   }
 
@@ -207,6 +242,20 @@ class AlertModel {
       verdict: parseStringOrNull(data['verdict']),
       message: parseStringOrNull(data['message']),
       aiConfidence: aiConfidence,
+      pushedAt: parseDateTimeOrNull(data['pushedAt']),
+      escalatedAt: parseDateTimeOrNull(data['escalatedAt']),
+      escalationLevel: parseInt(data['escalationLevel'], 0),
+      fireServicesNotifiedAt: parseDateTimeOrNull(
+        data['fireServicesNotifiedAt'],
+      ),
+      fireServicesNotified: [
+        if (data['fireServicesNotified'] is List)
+          for (final name in data['fireServicesNotified'] as List)
+            if (name is String) name,
+      ],
+      verdictBy: parseStringOrNull(data['verdictByName'] ?? data['verdictBy']),
+      verdictAt: parseDateTimeOrNull(data['verdictAt']),
+      detections: parseInt(data['detections'], 1),
     );
   }
 

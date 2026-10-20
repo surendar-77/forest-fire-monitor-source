@@ -6,7 +6,9 @@ import '../services/monitoring_data_source.dart';
 import '../services/node_repository.dart';
 import '../services/notification_service.dart';
 import '../services/report_export_service.dart';
+import '../utils/alert_timeline.dart';
 import '../utils/friendly.dart';
+import 'reports_screen.dart';
 
 const List<String> _severities = ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'];
 
@@ -256,7 +258,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
             ],
           ),
         ),
-        if (_canRespond)
+        if (widget.repository != null)
+          IconButton(
+            tooltip: 'Reports',
+            icon: const Icon(Icons.assessment_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ReportsScreen(
+                  repository: widget.repository!,
+                  auth: widget.auth,
+                ),
+              ),
+            ),
+          )
+        else if (_canRespond)
           PopupMenuButton<bool>(
             tooltip: 'Download report',
             icon: const Icon(Icons.download_outlined),
@@ -595,20 +611,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   'Location',
                   '${alert.latitude.toStringAsFixed(4)}, ${alert.longitude.toStringAsFixed(4)}',
                 ),
-                if (alert.acknowledgedAt != null)
-                  _row(
-                    'Handled by',
-                    '${alert.acknowledgedBy ?? 'Unknown'} · ${_dateTime(alert.acknowledgedAt!)}',
-                  ),
-                if (alert.resolvedAt != null)
-                  _row(
-                    'Resolved by',
-                    '${alert.resolvedBy ?? 'Unknown'} · ${_dateTime(alert.resolvedAt!)}',
-                  ),
                 if (alert.outcome != null)
                   _row('What it was', AlertOutcome.label(alert.outcome)),
                 if (alert.notes != null && alert.notes!.isNotEmpty)
                   _row('Notes', alert.notes!),
+                const SizedBox(height: 4),
+                const Text(
+                  'Timeline',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                ),
+                const SizedBox(height: 10),
+                AlertTimelineView(alert: alert),
                 if (canAck || canResolve) ...[
                   const SizedBox(height: 16),
                   SizedBox(

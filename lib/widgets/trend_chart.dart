@@ -15,9 +15,52 @@ class TrendSeries {
   bool get hasData => points.any((p) => p.$2 != null);
 }
 
+/// Pinch to zoom the time axis, drag sideways to move along it.
+FlTransformationConfig chartZoomConfig(TransformationController controller) =>
+    FlTransformationConfig(
+      scaleAxis: FlScaleAxis.horizontal,
+      minScale: 1,
+      maxScale: 25,
+      trackpadScrollCausesScale: true,
+      transformationController: controller,
+    );
+
+/// Current horizontal zoom factor of a chart (1 = whole period).
+double chartZoom(TransformationController controller) =>
+    controller.value.getMaxScaleOnAxis();
+
+/// "Reset zoom" chip shown while a chart is zoomed in.
+class ChartZoomReset extends StatelessWidget {
+  const ChartZoomReset({super.key, required this.controller});
+
+  final TransformationController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Matrix4>(
+      valueListenable: controller,
+      builder: (context, matrix, _) {
+        final zoom = matrix.getMaxScaleOnAxis();
+        if (zoom <= 1.01) {
+          return Tooltip(
+            message: 'Pinch to zoom, drag sideways to move',
+            child: Icon(Icons.zoom_in, size: 18, color: Colors.grey.shade500),
+          );
+        }
+        return ActionChip(
+          visualDensity: VisualDensity.compact,
+          avatar: const Icon(Icons.zoom_out_map, size: 16),
+          label: Text('${zoom.toStringAsFixed(zoom < 10 ? 1 : 0)}x · Reset'),
+          onPressed: () => controller.value = Matrix4.identity(),
+        );
+      },
+    );
+  }
+}
+
 /// A titled card with a time-series line chart, a legend and the latest
-/// value of each line.
-class TrendChart extends StatelessWidget {
+/// value of each line. Pinch to zoom, drag to move along the time axis.
+class TrendChart extends StatefulWidget {
   const TrendChart({
     super.key,
     required this.title,
@@ -40,6 +83,28 @@ class TrendChart extends StatelessWidget {
   /// Coloured background bands, e.g. risk levels: (from, to, colour).
   final List<(double, double, Color)> bands;
   final IconData? icon;
+
+  @override
+  State<TrendChart> createState() => _TrendChartState();
+}
+
+class _TrendChartState extends State<TrendChart> {
+  final TransformationController _zoom = TransformationController();
+
+  String get title => widget.title;
+  List<TrendSeries> get series => widget.series;
+  String get unit => widget.unit;
+  int get decimals => widget.decimals;
+  double? get minY => widget.minY;
+  double? get maxY => widget.maxY;
+  List<(double, double, Color)> get bands => widget.bands;
+  IconData? get icon => widget.icon;
+
+  @override
+  void dispose() {
+    _zoom.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,6 +135,7 @@ class TrendChart extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (withData.isNotEmpty) ChartZoomReset(controller: _zoom),
               ],
             ),
             const SizedBox(height: 6),
@@ -104,7 +170,14 @@ class TrendChart extends StatelessWidget {
                         style: TextStyle(color: Colors.grey.shade600),
                       ),
                     )
-                  : _chart(withData, allTimes),
+                  : ValueListenableBuilder<Matrix4>(
+                      valueListenable: _zoom,
+                      builder: (context, matrix, _) => _chart(
+                        withData,
+                        allTimes,
+                        matrix.getMaxScaleOnAxis(),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -119,16 +192,24 @@ class TrendChart extends StatelessWidget {
     return last == null ? '--' : '${last.toStringAsFixed(decimals)}$unit';
   }
 
-  Widget _chart(List<TrendSeries> data, List<DateTime> times) {
+  Widget _chart(List<TrendSeries> data, List<DateTime> times, double zoom) {
     final first = times.reduce((a, b) => a.isBefore(b) ? a : b);
     final last = times.reduce((a, b) => a.isAfter(b) ? a : b);
-    final span = last.difference(first);
-    final fmt = span.inHours >= 30 ? DateFormat('d MMM') : DateFormat('HH:mm');
-    final interval = (span.inMilliseconds / 4)
-        .clamp(60000, double.infinity)
+    // Labels follow what is on screen, so zooming in shows finer times.
+    final visible = Duration(
+      milliseconds: (last.difference(first).inMilliseconds / zoom).round(),
+    );
+    final fmt = visible.inHours >= 30
+        ? DateFormat('d MMM')
+        : visible.inMinutes >= 10
+        ? DateFormat('HH:mm')
+        : DateFormat('HH:mm:ss');
+    final interval = (visible.inMilliseconds / 4)
+        .clamp(5000, double.infinity)
         .toDouble();
 
     return LineChart(
+      transformationConfig: chartZoomConfig(_zoom),
       LineChartData(
         minY: minY,
         maxY: maxY,

@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../utils/firestore_parse.dart';
 import 'detection_model.dart';
 
@@ -262,6 +264,59 @@ class DangerHour {
   String get hourLabel => time.length >= 16 ? time.substring(11, 16) : time;
 }
 
+/// Air at the sensor from its MQ-2 smoke sensors (`devices/{id}.localAir`,
+/// worked out by the backend each minute): clean air, smoke or gas.
+class LocalAir {
+  const LocalAir({
+    required this.status,
+    required this.label,
+    required this.detail,
+    this.at,
+  });
+
+  /// LEARNING, UNKNOWN, CLEAN, SLIGHT, SMOKE, HEAVY_SMOKE or GAS.
+  final String status;
+  final String label;
+  final String detail;
+  final DateTime? at;
+
+  static LocalAir? fromMap(Object? value) {
+    if (value is! Map) return null;
+    final status = parseStringOrNull(value['status']);
+    final label = parseStringOrNull(value['label']);
+    if (status == null || label == null) return null;
+    return LocalAir(
+      status: status,
+      label: label,
+      detail: parseString(value['detail'], ''),
+      at: parseDateTimeOrNull(value['at']),
+    );
+  }
+
+  /// Older than this and the panel doesn't show it.
+  static const Duration staleAfter = Duration(minutes: 10);
+
+  bool isStaleAt(DateTime now) => at != null && now.difference(at!) > staleAfter;
+
+  Color get color => switch (status) {
+    'CLEAN' => Colors.green.shade700,
+    'SLIGHT' => Colors.amber.shade800,
+    'GAS' => Colors.purple.shade600,
+    'SMOKE' => Colors.orange.shade800,
+    'HEAVY_SMOKE' => Colors.red.shade700,
+    _ => Colors.grey.shade600,
+  };
+
+  IconData get icon => switch (status) {
+    'CLEAN' => Icons.air,
+    'SLIGHT' => Icons.blur_on,
+    'GAS' => Icons.propane_tank_outlined,
+    'SMOKE' || 'HEAVY_SMOKE' => Icons.cloud,
+    'LEARNING' => Icons.school_outlined,
+    _ => Icons.help_outline,
+  };
+}
+
 /// A monitoring node, read from `devices/{nodeId}`.
 class NodeModel {
   /// After this long without data the node is shown as stale, even if the
@@ -296,6 +351,9 @@ class NodeModel {
   /// LoRa signal from the receiver board, if one reports this node.
   final LoraLink? lora;
 
+  /// Air at the sensor (clean, smoke, gas) from the smoke sensors.
+  final LocalAir? localAir;
+
   const NodeModel({
     required this.id,
     required this.name,
@@ -311,6 +369,7 @@ class NodeModel {
     this.airQuality,
     this.hotspots = const [],
     this.lora,
+    this.localAir,
   });
 
   double get latitude => detection.latitude;
@@ -385,6 +444,7 @@ class NodeModel {
       terrain: parseStringOrNull(data['terrain']),
       airQuality: AirQuality.fromMap(data['airQuality']),
       lora: LoraLink.fromMap(data['lora']),
+      localAir: LocalAir.fromMap(data['localAir']),
       hotspots:
           data['satellite'] is Map &&
               (data['satellite'] as Map)['hotspots'] is List

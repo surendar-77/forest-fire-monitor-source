@@ -198,12 +198,52 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
                 ),
               ],
             ),
+            if (node.localAir != null &&
+                !node.localAir!.isStaleAt(DateTime.now())) ...[
+              const SizedBox(height: 8),
+              _airQuality(node.localAir!),
+            ],
             if (node.danger != null) ...[
               const SizedBox(height: 8),
               _firePrediction(node.danger!),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  /// Air at the sensor from the smoke sensors: clean, smoke or gas.
+  Widget _airQuality(LocalAir air) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: air.color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(air.icon, size: 18, color: air.color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  const TextSpan(text: 'Air at sensor: '),
+                  TextSpan(
+                    text: air.label,
+                    style: TextStyle(fontWeight: FontWeight.w700, color: air.color),
+                  ),
+                  if (air.status != 'CLEAN' && air.detail.isNotEmpty)
+                    TextSpan(text: ' · ${air.detail}'),
+                ],
+              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

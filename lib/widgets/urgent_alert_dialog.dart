@@ -58,6 +58,18 @@ class UrgentAlertDialog extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 18),
               ),
+              if (alert.message != null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  alert.message!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    height: 1.35,
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               if (camera && confidence > 0)
                 _line(
