@@ -68,6 +68,8 @@
           "lora": { ".validate": "newData.isString() && newData.val().length <= 32" },
           "loraTx": { ".validate": "newData.isNumber() && newData.val() >= 0" },
           "tsp": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "stuck": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "loraResets": { ".validate": "newData.isNumber() && newData.val() >= 0" },
           "$other": { ".validate": false }
         },
 
