@@ -6,6 +6,9 @@ class LiveReading {
   /// Older than this and the live card says the feed has paused.
   static const Duration staleAfter = Duration(seconds: 10);
 
+  /// LoRa relays a packet every 10-20 s, so it stays live longer.
+  static const Duration loraStaleAfter = Duration(seconds: 45);
+
   final DateTime? time;
   final double? temperature;
   final double? humidity;
@@ -17,6 +20,12 @@ class LiveReading {
   final String? riskLevel;
   final String? aiClass;
   final double? aiConfidence;
+
+  /// "lora" when the backend filled this in from the LoRa relay because the
+  /// node's own Wi-Fi feed was down; null for the node's own feed.
+  final String? via;
+
+  bool get viaLora => via == 'lora';
 
   const LiveReading({
     this.time,
@@ -30,6 +39,7 @@ class LiveReading {
     this.riskLevel,
     this.aiClass,
     this.aiConfidence,
+    this.via,
   });
 
   factory LiveReading.fromMap(Map<Object?, Object?> map) {
@@ -49,11 +59,12 @@ class LiveReading {
       riskLevel: parseStringOrNull(map['level']),
       aiClass: parseStringOrNull(map['ai']),
       aiConfidence: parseDoubleOrNull(map['conf']),
+      via: parseStringOrNull(map['via']),
     );
   }
 
   bool isStaleAt(DateTime now) {
     final t = time;
-    return t == null || now.difference(t) > staleAfter;
+    return t == null || now.difference(t) > (viaLora ? loraStaleAfter : staleAfter);
   }
 }

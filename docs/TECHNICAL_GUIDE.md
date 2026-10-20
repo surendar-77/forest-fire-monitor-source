@@ -81,7 +81,7 @@ Android builds need NDK `28.2.13676358` (`sdkmanager "ndk/28.2.13676358"`) and a
 | MQ-2 smoke sensor 1 | ✅ | 1 s | baseline-relative scoring after warm-up |
 | MQ-2 smoke sensor 2 | ❌ (`MQ2_INSTALLED false`) | — | an unconnected ADC pin reads noise |
 | Battery / charging | ❌ (`BATTERY_PIN -1`) | — | wiring in [HARDWARE.md](HARDWARE.md) |
-| LoRa RA-02 (433 MHz) | ⚠ fitted, no antenna | — | receiver gateway pending |
+| LoRa RA-02 (433 MHz) | ✅ with antennas | every 2.5 s + after each AI result | all data relayed by the gateway (10 dBm) |
 
 | Data | Status |
 |---|---|
@@ -220,14 +220,14 @@ reset**. Rule of thumb: **up to 5 nodes and ~10 people with the app open all day
 | Air at the sensor (clean / smoke / gas) | Implemented, tested, running |
 | Telegram for users and fire stations | Implemented; bot connected; stations to be added |
 | Sign-up (viewers), add sensor, fire stations admin | Implemented, released |
-| LoRa receiver gateway | **Pending** (antennas needed) |
+| LoRa receiver gateway (all data, backup when Wi-Fi fails) | Implemented, tested on hardware (Wi-Fi-off test passed) |
 | Over-the-air firmware updates | **Designed, not built** |
 | Camera model retraining from verdicts (ML stage 3) | **Pending** (needs labelled events) |
 | iOS build | **Not built** (needs an Apple developer account and a Mac) |
 
 ### Next required actions
 
-1. Fit antennas to both RA-02 modules and finish the LoRa gateway (forest sites without Wi-Fi).
+1. Range-test LoRa in the forest (10 dBm, SF7); consider SF9-10 for longer range.
 2. Power the node from a 5 V 2 A supply or battery + solar; wire the battery sensor.
 3. Collect Real fire / False alarm verdicts, then retrain the camera model and re-check the 75% threshold.
 4. Close the RTDB device-key gap with Worker-minted tokens; rotate old keys; delete the old Firebase project.

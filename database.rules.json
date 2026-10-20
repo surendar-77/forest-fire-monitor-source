@@ -78,6 +78,12 @@
       }
     },
 
+    "lora": {
+      "$node": {
+        ".read": "auth != null"
+      }
+    },
+
     "deviceKeys": {
       ".read": false,
       ".write": false

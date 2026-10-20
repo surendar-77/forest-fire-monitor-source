@@ -102,7 +102,7 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
         ? Colors.green
         : (offline ? Colors.red : Colors.orange);
     final statusText = fresh
-        ? 'Live'
+        ? (live.viaLora ? 'Live via LoRa' : 'Live')
         : offline
         ? 'Offline'
         : 'Last reading';

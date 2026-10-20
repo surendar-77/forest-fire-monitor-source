@@ -49,6 +49,13 @@ import { fetchLastFeed, parseFeed } from "./thingspeak.js";
 import { isHealthAlert, parseHealth, planHealth } from "./health.js";
 import { alertMessageFor, CONFIRMED_MESSAGE } from "./alertMessages.js";
 import { localAir } from "./localAir.js";
+import {
+  alertAllowed,
+  DIRECT_FRESH_MS,
+  LORA_DEVICE_WRITE_MS,
+  liveValues,
+  parseLoraData,
+} from "./loraData.js";
 import { newNodeKey, parseAddNode } from "./nodes.js";
 import { Rtdb } from "./rtdb.js";
 import { botUsername, chatsFromUpdates, getUpdates, sendText, type BotCommand } from "./telegram.js";
@@ -1404,6 +1411,126 @@ async function handleLoraReport(request: Request, env: Env): Promise<Response> {
   return json(200, { status: "saved" });
 }
 
+/**
+ * POST /lora/data: one node packet relayed by a receiver. The latest copy is
+ * always kept (RTDB lora/{node}); when the node's own Wi-Fi feed has been
+ * quiet for 30 s the LoRa data takes over the live panel, the device and
+ * history (once a minute) and fire/smoke alerts. While Wi-Fi works this
+ * costs no Firestore reads.
+ */
+async function handleLoraData(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json(400, { error: "Body must be JSON." });
+  }
+  const data = parseLoraData(body);
+  if (typeof data === "string") return json(400, { error: data });
+
+  const ctx = context(env);
+  const expected = await deviceKeyFor(ctx, data.gateway);
+  if (!expected || !safeEqual(expected, data.key)) {
+    return json(403, { error: "Unknown gateway or wrong key." });
+  }
+
+  const node = encodeURIComponent(data.node);
+  const p = data.packet;
+  await ctx.rtdb.put(`lora/${node}`, {
+    ...liveValues(p),
+    ...(p.pkt != null ? { pkt: p.pkt } : {}),
+    ...(p.wifiUp != null ? { wifiUp: p.wifiUp } : {}),
+    ...(p.cameraAgeSec != null ? { camAge: p.cameraAgeSec } : {}),
+    ...(p.smokeFault != null ? { smokeFault: p.smokeFault } : {}),
+    ...(data.rssi != null ? { rssi: data.rssi } : {}),
+    ...(data.snr != null ? { snr: data.snr } : {}),
+    gateway: data.gateway,
+    ts: { ".sv": "timestamp" },
+  });
+
+  const liveTs = await ctx.rtdb.get(`live/${node}/values/ts`);
+  const now = Date.now();
+  if (typeof liveTs === "number" && now - liveTs < DIRECT_FRESH_MS) {
+    return json(200, { status: "stored", fallback: false });
+  }
+
+  // The node's own feed is quiet: LoRa takes over.
+  await ctx.rtdb.put(`live/${node}/values`, { ...liveValues(p), ts: { ".sv": "timestamp" } });
+
+  const meta = await ctx.rtdb.get(`loraMeta/${node}/deviceWriteAt`);
+  if (typeof meta !== "number" || now - meta >= LORA_DEVICE_WRITE_MS) {
+    const devicePath = `devices/${data.node}`;
+    const device = await ctx.fs.get(devicePath);
+    if (!device) return json(404, { error: "Unknown node." });
+    const reading: Record<string, Plain> = {
+      ts: ctx.now,
+      temperature: p.t1,
+      humidity: p.h1,
+      temperature2: p.t2,
+      humidity2: p.h2,
+      mq2_1: p.mq1,
+      mq2_2: p.mq2,
+      aiClass: p.ai,
+      aiConfidence: p.conf,
+      riskScore: p.risk,
+      fireProbability: p.ai === "Fire" && p.conf != null ? p.conf * 100 : 0,
+      smokeProbability: p.ai === "Smoke" && p.conf != null ? p.conf * 100 : 0,
+      via: "lora",
+    };
+    await ctx.fs.commit([
+      {
+        set: devicePath,
+        merge: true,
+        data: {
+          status: "ONLINE",
+          lastSeen: ctx.now,
+          via: "lora",
+          ...(p.t1 != null ? { temperature: p.t1 } : {}),
+          ...(p.h1 != null ? { humidity: p.h1 } : {}),
+          ...(p.t2 != null ? { temperature2: p.t2 } : {}),
+          ...(p.h2 != null ? { humidity2: p.h2 } : {}),
+          ...(p.mq1 != null ? { mq2Sensor1: p.mq1 } : {}),
+          ...(p.mq2 != null ? { mq2Sensor2: p.mq2 } : {}),
+          ...(p.ai != null ? { aiClass: p.ai, aiConfidence: p.conf ?? 0 } : {}),
+          ...(p.risk != null ? { riskScore: p.risk } : {}),
+          ...(p.level != null ? { riskLevel: p.level } : {}),
+        },
+      },
+      { set: `${devicePath}/readings/${newDocId()}`, data: reading },
+    ]);
+    await ctx.rtdb.put(`loraMeta/${node}/deviceWriteAt`, now);
+  }
+
+  if (p.alert && alertAllowed(p, AI_FIRE_CONFIDENCE_THRESHOLD)) {
+    const device = await ctx.fs.get(`devices/${data.node}`);
+    const alertId = await createAlertIfNew(ctx, data.node, p.alert.type, p.alert.severity, {
+      message:
+        alertMessageFor(p.alert.type, {
+          nodeName: typeof device?.data.name === "string" ? device.data.name : data.node,
+          severity: p.alert.severity,
+          aiConfidence: p.alert.type === "ENVIRONMENTAL_RISK" ? null : p.conf,
+          temperature: p.t1,
+          humidity: p.h1,
+          smoke: p.mq1,
+        }) + " (Relayed by LoRa: the sensor's Wi-Fi is down.)",
+      source: "lora",
+      fireProbability: p.ai === "Fire" && p.conf != null ? p.conf * 100 : 0,
+      smokeProbability: p.ai === "Smoke" && p.conf != null ? p.conf * 100 : 0,
+      temperature: p.t1 ?? 0,
+      humidity: p.h1 ?? 0,
+      latitude: asNumber(device?.data.latitude),
+      longitude: asNumber(device?.data.longitude),
+      sensorReadings: { mq2_1: p.mq1, mq2_2: p.mq2, aiClass: p.ai, aiConfidence: p.conf, riskScore: p.risk },
+    }, undefined, true);
+    if (alertId) {
+      const created = await ctx.fs.get(`alerts/${alertId}`);
+      if (created) await run(`push ${alertId}`, () => sendNewAlert(ctx, alertId, created.path, created.data));
+    }
+  }
+
+  return json(200, { status: "relayed", fallback: true });
+}
+
 // ---------------------------------------------------------------------------
 
 export default {
@@ -1435,6 +1562,16 @@ export default {
       } catch (error) {
         console.error("device alert failed:", error instanceof Error ? error.message : error);
         return json(500, { error: "Alert could not be saved; the node will retry." });
+      }
+    }
+
+    if (url.pathname === "/lora/data") {
+      if (request.method !== "POST") return json(405, { error: "Use POST." });
+      try {
+        return await handleLoraData(request, env);
+      } catch (error) {
+        console.error("lora data failed:", error instanceof Error ? error.message : error);
+        return json(500, { error: "Packet could not be saved." });
       }
     }
 

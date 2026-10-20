@@ -46,7 +46,7 @@ identifying the cause of a fire.
 | N4 | Direct fire/smoke alerts to the backend | done — ≈2 s to phones |
 | N5 | Self-healing Wi-Fi, watchdog, backup networks, serial Wi-Fi commands | done |
 | N6 | Board health report (power, Wi-Fi, memory, sensors) every 30 s | done |
-| N7 | LoRa link for sites without Wi-Fi | pending — needs antennas |
+| N7 | LoRa backup link (all data relayed by a gateway) | done — 84–95% packets received; takes over within 30 s of Wi-Fi loss |
 | N8 | Battery level and charging | ready in firmware; needs wiring |
 | N9 | Over-the-air firmware updates | designed, not built |
 
@@ -88,7 +88,7 @@ identifying the cause of a fire.
 
 ## 6. Open items
 
-1. LoRa gateway for sites without Wi-Fi (antennas needed).
+1. LoRa range test in the forest; a gateway with its own power and internet at each site.
 2. Field validation of the camera thresholds on real or controlled burns.
 3. Retrain the camera model from collected verdicts (ML stage 3).
 4. Device authentication with backend-issued tokens instead of per-node keys.

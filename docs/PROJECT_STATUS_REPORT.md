@@ -39,7 +39,7 @@ Evidence is from files, test runs and the live system on the date above. Nothing
 |---|---|
 | Telegram fire stations | bot ready; no station added yet |
 | Camera accuracy | buttons and card live; one judged alert so far |
-| LoRa | sender in firmware, receiver flashed; no antennas, so no packets received |
+| LoRa | working with antennas: all data relayed, backup path verified with Wi-Fi off; range not yet tested in the forest |
 | Battery monitoring | firmware ready (`BATTERY_PIN`); hardware not wired |
 
 ## 4. Pending (no blocker other than time)
@@ -53,7 +53,7 @@ Evidence is from files, test runs and the live system on the date above. Nothing
 
 | Item | Blocked by |
 |---|---|
-| Off-grid operation (LoRa gateway) | antennas for both RA-02 modules |
+| LoRa range in the forest | a field test |
 | Validated camera detection rate | real or controlled fires; enough verdicts |
 | Camera model retraining (ML stage 3) | labelled real/false events |
 | iOS app | Apple developer account and a Mac |

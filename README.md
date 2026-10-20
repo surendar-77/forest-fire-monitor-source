@@ -66,7 +66,7 @@ flowchart LR
 | Reduce false alarms | ✅ Done | 75% threshold, 2-minute confirmation, per-node baselines, verdicts |
 | Alert the right people in seconds, with clear instructions | ✅ Done | push, alarm, Telegram, fire stations, plain messages |
 | Forecast fire danger from weather (ML) | ✅ Done | Indian-data model, ROC AUC 0.85 on unseen states |
-| Work without Wi-Fi in the forest | ⏳ Pending | LoRa gateway (needs antennas) |
+| Keep working when the node's Wi-Fi fails | ✅ Done | LoRa backup path through a receiver gateway |
 
 ---
 
@@ -146,6 +146,7 @@ Satellite map with live panel → sensor details → Data graphs → Alerts with
 | 🎯 | **Camera accuracy** | *Real fire / False alarm* buttons; accuracy card suggests a better threshold |
 | 🔥 | **Fire danger** | ML chance of fire today and the riskiest hour, adjusted for forest type |
 | 👥 | **Accounts and roles** | open sign-up as viewer; officers respond; admins add sensors and fire stations |
+| 📡 | **LoRa backup** | the node sends all its data by radio; a gateway forwards it, and it takes over live data, history and alerts when the node's Wi-Fi is down |
 | ⬆️ | **Self-updating** | web and Android apps show "update available" and update in two taps |
 
 <details>
@@ -212,6 +213,7 @@ Satellite map with live panel → sensor details → Data graphs → Alerts with
 |---|---|---|
 | `POST` | `/alert` | Fire / smoke / risk alert from a node (node id + key) |
 | `POST` | `/lora` | LoRa link report from a receiver gateway (gateway id + key) |
+| `POST` | `/lora/data` | A node packet relayed by the gateway; used when the node's own Wi-Fi feed is quiet |
 | `GET` | `/apk/version.json` | Latest Android build, version and notes (in-app update) |
 | `GET` | `/apk/ForestFireMonitor-<version>.apk` | Android download |
 | `GET` | `/` | Backend version |

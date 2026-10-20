@@ -56,6 +56,7 @@ Each run has its own budget of 50 sub-requests (Workers Free), which is why inge
 |---|---|---|
 | POST | `/alert` | node alert: `{node, key, type, severity, aiClass, aiConfidence, temperature, humidity, mq2_1, mq2_2, riskScore}`; fire under 75% is ignored; duplicates fold into the open alert |
 | POST | `/lora` | receiver gateway link report → `devices/{node}.lora` |
+| POST | `/lora/data` | `{gateway, key, node, rssi, snr, packet}`: always stored in RTDB `lora/{node}`; when `live/{node}` is older than 30 s it becomes the live data, updates the device and history once a minute and raises fire/smoke alerts (75% rule) |
 | GET | `/apk/version.json`, `/apk/*.apk` | static assets for in-app Android updates |
 | GET | `/` | `Forest Fire backend worker-x.y.z` |
 

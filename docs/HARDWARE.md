@@ -11,8 +11,8 @@ the ThingSpeak write key). Never commit `ForestFire_S3.ino` or paste those value
 | ESP32-CAM (AI-Thinker) | camera only: joins the S3's own Wi-Fi `FireDetector`, posts a 240×240 JPEG every 3 s to `http://192.168.4.1/upload` |
 | DHT22 × 2 | temperature / humidity, zones 1 and 2 |
 | MQ-2 | smoke / combustible gas (one fitted) |
-| RA-02 (SX1278, 433 MHz) | LoRa link to a receiver gateway (pending; needs antennas) |
-| ESP32 DevKit V1 + RA-02 | LoRa receiver gateway (`LoRa_Receiver.ino`, reports to the Worker `/lora`) |
+| RA-02 (SX1278, 433 MHz) | LoRa backup link to a receiver gateway, 10 dBm (the licence-free limit for 433 MHz in India) |
+| ESP32 DevKit V1 + RA-02 | LoRa receiver gateway (`LoRa_Receiver.ino`): forwards packets to `/lora/data` and link reports to `/lora` |
 
 ## Pins (ESP32-S3)
 

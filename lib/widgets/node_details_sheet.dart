@@ -230,7 +230,9 @@ class _NodeDetailsState extends State<NodeDetails> {
 
     return _Section(
       title: fresh ? 'Live readings' : 'Latest readings',
-      trailing: fresh ? const Pill('Live', color: Colors.green) : null,
+      trailing: fresh
+          ? Pill(live.viaLora ? 'Live via LoRa' : 'Live', color: Colors.green)
+          : null,
       children: [
         _Row(Icons.thermostat, 'Temperature', '${temp(t1)}  ·  ${temp(t2)}',
             hint: 'Sensor 1 · sensor 2'),
