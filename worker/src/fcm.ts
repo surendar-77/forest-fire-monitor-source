@@ -38,6 +38,18 @@ function title(alert: Alert, escalation: number): string {
   const kind =
     alert.type === "NODE_OFFLINE"
       ? "Node offline"
+      : alert.type === "CAMERA_OFFLINE"
+        ? "Camera not sending photos"
+      : alert.type === "SENSOR_FAULT"
+        ? "Sensor not reading"
+      : alert.type === "POWER_PROBLEM"
+        ? "Power problem"
+      : alert.type === "WEAK_WIFI"
+        ? "Weak Wi-Fi"
+      : alert.type === "LOW_BATTERY"
+        ? "Low battery"
+      : alert.type === "BOARD_HOT"
+        ? "Board overheating"
       : alert.type === "FIRE"
         ? "Fire detected"
         : alert.type === "SMOKE"
@@ -54,6 +66,7 @@ function body(alert: Alert): string {
   if (alert.type === "NODE_OFFLINE") {
     return `${alert.deviceId} has stopped reporting. Check power and connectivity.`;
   }
+  if (typeof alert.message === "string" && alert.message.length > 0) return alert.message;
   const parts: string[] = [];
   if (typeof alert.temperature === "number") parts.push(`${alert.temperature.toFixed(1)}°C`);
   if (typeof alert.humidity === "number") parts.push(`${alert.humidity.toFixed(0)}% RH`);

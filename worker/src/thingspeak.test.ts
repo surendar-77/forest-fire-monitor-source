@@ -98,6 +98,19 @@ test("a likely sensor anomaly alerts on its own; danger raises severity", () => 
   assert.equal(decideAlert(reading, suspicious, "HIGH"), null);
 });
 
+test("camera Fire below 75% confidence raises no alert", () => {
+  const reading = parseFeed({ ...feed, field7: "0", field8: "0.74" }, now, 120);
+  assert.equal(decideAlert(reading, normal, "VERY HIGH"), null);
+
+  const sure = parseFeed({ ...feed, field7: "0", field8: "0.75" }, now, 120);
+  assert.deepEqual(decideAlert(sure, normal, null), { type: "FIRE", severity: "HIGH" });
+});
+
+test("camera Smoke still alerts from 50% confidence", () => {
+  const reading = parseFeed({ ...feed, field7: "2", field8: "0.6" }, now, 120);
+  assert.deepEqual(decideAlert(reading, normal, "LOW"), { type: "SMOKE", severity: "MODERATE" });
+});
+
 test("low-confidence camera detection doesn't alert by itself", () => {
   const reading = parseFeed({ ...feed, field7: "0", field8: "30" }, now, 120);
   assert.equal(decideAlert(reading, normal, "VERY HIGH"), null);

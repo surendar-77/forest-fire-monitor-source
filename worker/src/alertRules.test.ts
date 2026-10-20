@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { blocksNewDetection, foldRepeatDetection } from "./alertRules.js";
+import { blocksNewDetection, foldRepeatDetection, outageEnded } from "./alertRules.js";
 
 test("only recent open alerts silence a new detection", () => {
   const now = new Date("2026-10-19T09:00:00Z");
@@ -44,4 +44,14 @@ test("a gap restarts the 2-minute streak; smoke is never confirmed", () => {
     foldRepeatDetection({ type: "SMOKE", detectedAt: t0, lastDetectedAt: at(60) }, at(120)).confirmNow,
     false,
   );
+});
+
+test("an offline alert is over once the node reported after it", () => {
+  const raised = new Date("2026-10-18T14:08:00Z");
+  const alert = { type: "NODE_OFFLINE", status: "ACTIVE", detectedAt: raised };
+  // The real case: raised yesterday, node reported again today, then went quiet.
+  assert.equal(outageEnded(alert, new Date("2026-10-19T13:38:00Z")), true);
+  // Still the same outage: nothing heard since it was raised.
+  assert.equal(outageEnded(alert, new Date("2026-10-18T13:55:00Z")), false);
+  assert.equal(outageEnded(alert, null), false);
 });

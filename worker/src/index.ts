@@ -16,9 +16,11 @@
 
 import {
   AI_FIRE_CONFIDENCE_THRESHOLD,
+  AI_SMOKE_CONFIDENCE_THRESHOLD,
   blocksNewDetection,
   decideAlert,
   foldRepeatDetection,
+  outageEnded,
   OPEN_STATUSES,
 } from "./alertRules.js";
 import {
@@ -44,6 +46,10 @@ import { Firestore, newDocId, type Doc, type Plain, type Write } from "./firesto
 import { accessToken, type ServiceAccount } from "./google.js";
 import { lookupUser, setClaims } from "./identity.js";
 import { fetchLastFeed, parseFeed } from "./thingspeak.js";
+import { isHealthAlert, parseHealth, planHealth } from "./health.js";
+import { newNodeKey, parseAddNode } from "./nodes.js";
+import { Rtdb } from "./rtdb.js";
+import { botUsername, chatsFromUpdates, getUpdates, sendText, type BotCommand } from "./telegram.js";
 
 export interface Env {
   /** The Firebase service-account JSON, stored with `wrangler secret put`. */
@@ -57,6 +63,8 @@ export interface Env {
   FIRMS_MAP_KEY?: string;
   /** Satellite detections within this distance of a node are shown. */
   SATELLITE_RADIUS_KM?: string;
+  /** Realtime Database URL (board health, device keys). */
+  RTDB_URL?: string;
 }
 
 const VERSION = "worker-1.0.0";
@@ -72,6 +80,7 @@ const ROLES = ["viewer", "officer", "admin"];
 
 interface Context {
   fs: Firestore;
+  rtdb: Rtdb;
   projectId: string;
   token: () => Promise<string>;
   now: Date;
@@ -100,6 +109,10 @@ function context(env: Env): Context {
   const token = () => accessToken(account);
   return {
     fs: new Firestore(account.project_id, token),
+    rtdb: new Rtdb(
+      env.RTDB_URL ?? `https://${account.project_id}-default-rtdb.firebaseio.com`,
+      token,
+    ),
     projectId: account.project_id,
     token,
     now: new Date(),
@@ -113,7 +126,7 @@ const asNumber = (value: Plain | undefined, fallback = 0): number =>
 
 /** Subrequests left in this invocation, keeping a small margin. */
 function budget(ctx: Context, used = 0): number {
-  return Math.max(0, SUBREQUEST_LIMIT - ctx.fs.requests - used - 3);
+  return Math.max(0, SUBREQUEST_LIMIT - ctx.fs.requests - ctx.rtdb.requests - used - 3);
 }
 
 async function run(name: string, task: () => Promise<unknown>): Promise<void> {
@@ -173,6 +186,9 @@ async function recordRepeatDetection(ctx: Context, alert: Doc): Promise<void> {
 
   console.log(`Fire confirmed: ${alert.id} (seen ${update.detections} times without a break)`);
   const confirmed = { ...alert.data, ...fields };
+  await run(`confirm telegram ${alert.id}`, () =>
+    telegramUsers(ctx, alert.path, confirmed, "🚨 CONFIRMED: fire seen for over 2 minutes"),
+  );
   await run(`confirm push ${alert.id}`, () =>
     pushAlert(ctx.fs, ctx.projectId, ctx.token, alert.id, confirmed, {
       maxSends: budget(ctx, 6),
@@ -240,13 +256,12 @@ async function ingest(ctx: Context, channel: Channel): Promise<void> {
   const anomaly = scoreReading(toAnomalyReading(reading), parseBaseline(device?.data.baseline));
   const danger = asMap(device?.data.danger);
   const terrain = terrainFor(device?.data.terrain);
-  const confident = reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD;
   const risk = combineRisk({
     anomalyScore: anomaly.score,
     dangerProbability: dangerFor(danger, terrain),
     terrain,
-    cameraFire: reading.fireDetected && confident,
-    cameraSmoke: reading.smokeDetected && confident,
+    cameraFire: reading.fireDetected && reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD,
+    cameraSmoke: reading.smokeDetected && reading.aiConfidence >= AI_SMOKE_CONFIDENCE_THRESHOLD,
   });
   const fireProbability = reading.fireDetected ? reading.aiConfidence * 100 : 0;
   const smokeProbability = reading.smokeDetected ? reading.aiConfidence * 100 : 0;
@@ -393,6 +408,13 @@ async function pushNewAlerts(ctx: Context): Promise<void> {
   }
 }
 
+/** Every minute: admin requests from the app, and the Telegram inbox. */
+async function minuteJobs(ctx: Context): Promise<void> {
+  await run("push", () => pushNewAlerts(ctx));
+  await run("admin requests", () => adminRequests(ctx));
+  await run("telegram inbox", () => telegramInbox(ctx));
+}
+
 const SERIOUS = new Set(["HIGH", "CRITICAL"]);
 
 /**
@@ -406,7 +428,8 @@ async function sendNewAlert(
   path: string,
   alert: Record<string, Plain>,
 ): Promise<void> {
-  const serious = SERIOUS.has(String(alert.severity));
+  // Sensor problems go to the team only, never to fire services or the public.
+  const serious = SERIOUS.has(String(alert.severity)) && !isHealthAlert(alert.type);
   const lat = typeof alert.latitude === "number" ? alert.latitude : null;
   const lng = typeof alert.longitude === "number" ? alert.longitude : null;
   const located = lat != null && lng != null && (lat !== 0 || lng !== 0);
@@ -417,11 +440,12 @@ async function sendNewAlert(
     nearby: serious && located ? { latitude: lat, longitude: lng, radiusKm } : undefined,
   });
   await ctx.fs.set(path, { pushedAt: new Date() }, true);
+  await run(`telegram users ${alertId}`, () => telegramUsers(ctx, path, alert));
 
   const botToken = ctx.env.TELEGRAM_BOT_TOKEN;
   if (!serious || !botToken || alert.fireServicesNotifiedAt != null) return;
 
-  const config = parseFireServices((await ctx.fs.get("config/fireServices"))?.data);
+  const config = await loadFireServices(ctx);
   if (config.stations.length === 0) return;
 
   const device = await ctx.fs.get(`devices/${String(alert.deviceId ?? "")}`);
@@ -457,13 +481,22 @@ async function maintenance(ctx: Context): Promise<void> {
   ]);
 
   await run("node health", () => nodeHealth(ctx, devices, open));
+  await run("board health", () => boardHealth(ctx, devices, open));
   await run("role requests", () => roleRequests(ctx));
+  let telegramBot: string | null = null;
+  if (ctx.env.TELEGRAM_BOT_TOKEN) {
+    await run("telegram bot", async () => {
+      telegramBot = await botUsername(ctx.env.TELEGRAM_BOT_TOKEN!);
+    });
+  }
   await run("heartbeat", () =>
     ctx.fs.set("status/backend", {
       lastHeartbeat: new Date(),
       version: VERSION,
       openAlerts: open.length,
       host: "cloudflare-workers",
+      telegramConfigured: Boolean(ctx.env.TELEGRAM_BOT_TOKEN),
+      telegramBot,
     }),
   );
   await run("escalation", () => escalate(ctx, open));
@@ -485,43 +518,48 @@ async function nodeHealth(ctx: Context, devices: Doc[], open: Doc[]): Promise<vo
       const age = now - lastSeen.getTime();
       const status = age > OFFLINE_AFTER_MS ? "OFFLINE" : age > STALE_AFTER_MS ? "STALE" : "ONLINE";
 
-      if (status !== data.status) {
-        update.status = status;
+      if (status !== data.status) update.status = status;
 
-        if (status === "OFFLINE") {
-          await createAlertIfNew(
-            ctx,
-            device.id,
-            "NODE_OFFLINE",
-            "HIGH",
-            {
-              fireProbability: 0,
-              smokeProbability: 0,
-              temperature: asNumber(data.temperature),
-              humidity: asNumber(data.humidity),
-              latitude: asNumber(data.latitude),
-              longitude: asNumber(data.longitude),
-            },
-            open,
-          );
-          update.alertActive = true;
-        } else if (data.status === "OFFLINE") {
-          for (const outage of open) {
-            if (outage.data.deviceId === device.id && outage.data.type === "NODE_OFFLINE") {
-              writes.push({
-                set: outage.path,
-                merge: true,
-                data: {
-                  status: "RESOLVED",
-                  resolvedBy: "system",
-                  resolvedByName: "System",
-                  resolvedAt: new Date(),
-                  notes: "Node resumed reporting.",
-                },
-              });
-            }
-          }
-        }
+      // Offline alerts by facts, not status flips: one the node has reported
+      // after is over (resolve it); an offline node with no alert covering
+      // the current outage gets a new one (and a push).
+      const outages = open.filter(
+        (alert) => alert.data.deviceId === device.id && alert.data.type === "NODE_OFFLINE",
+      );
+      const ended = outages.filter((alert) => outageEnded(alert.data, lastSeen));
+      for (const outage of ended) {
+        writes.push({
+          set: outage.path,
+          merge: true,
+          data: {
+            status: "RESOLVED",
+            resolvedBy: "system",
+            resolvedByName: "System",
+            resolvedAt: new Date(),
+            notes: "Resolved automatically: the sensor reported again.",
+          },
+        });
+      }
+      const current = outages.filter((alert) => !ended.includes(alert));
+
+      if (status === "OFFLINE" && current.length === 0) {
+        await createAlertIfNew(
+          ctx,
+          device.id,
+          "NODE_OFFLINE",
+          "HIGH",
+          {
+            fireProbability: 0,
+            smokeProbability: 0,
+            temperature: asNumber(data.temperature),
+            humidity: asNumber(data.humidity),
+            latitude: asNumber(data.latitude),
+            longitude: asNumber(data.longitude),
+            lastSeen,
+          },
+          open.filter((alert) => !ended.includes(alert)),
+        );
+        update.alertActive = true;
       }
     }
 
@@ -537,7 +575,7 @@ async function escalate(ctx: Context, open: Doc[]): Promise<void> {
   for (const alert of open) {
     const data = alert.data;
     const detected = asDate(data.detectedAt);
-    if (data.status !== "ACTIVE" || !detected) continue;
+    if (data.status !== "ACTIVE" || !detected || isHealthAlert(data.type)) continue;
 
     const age = now - detected.getTime();
     if (age < ESCALATE_AFTER_MS || age > ESCALATION_MAX_AGE_MS) continue;
@@ -558,6 +596,304 @@ async function escalate(ctx: Context, open: Doc[]): Promise<void> {
       await ctx.fs.set(alert.path, { escalationLevel: next, escalatedAt: new Date() }, true);
     });
   }
+}
+
+/**
+ * Sensor problems from each online board's health report: raise an alert
+ * once a problem has lasted long enough, resolve it when it clears.
+ */
+async function boardHealth(ctx: Context, devices: Doc[], open: Doc[]): Promise<void> {
+  const writes: Write[] = [];
+
+  for (const device of devices) {
+    const lastSeen = asDate(device.data.lastSeen);
+    if (!lastSeen || ctx.now.getTime() - lastSeen.getTime() > OFFLINE_AFTER_MS) continue;
+
+    const health = parseHealth(await ctx.rtdb.get(`health/${encodeURIComponent(device.id)}/info`));
+    if (!health) continue;
+    const previous = device.data.healthIssues;
+    const plan = planHealth(
+      health,
+      ctx.now,
+      previous && typeof previous === "object" && !Array.isArray(previous) && !(previous instanceof Date)
+        ? (previous as Record<string, Plain>)
+        : null,
+      typeof device.data.brownoutStart === "number" ? device.data.brownoutStart : null,
+    );
+    if (!plan) continue;
+
+    for (const issue of plan.raise) {
+      await createAlertIfNew(
+        ctx,
+        device.id,
+        issue.type,
+        issue.severity,
+        {
+          message: issue.message,
+          fireProbability: 0,
+          smokeProbability: 0,
+          temperature: asNumber(device.data.temperature),
+          humidity: asNumber(device.data.humidity),
+          latitude: asNumber(device.data.latitude),
+          longitude: asNumber(device.data.longitude),
+        },
+        open,
+      );
+    }
+
+    for (const alert of open) {
+      if (alert.data.deviceId !== device.id || !plan.clear.includes(alert.data.type as never)) continue;
+      writes.push({
+        set: alert.path,
+        merge: true,
+        data: {
+          status: "RESOLVED",
+          resolvedBy: "system",
+          resolvedByName: "System",
+          resolvedAt: new Date(),
+          notes: "Resolved automatically: the problem cleared.",
+        },
+      });
+    }
+
+    const update: Record<string, Plain> = { healthIssues: plan.since, healthCheckedAt: ctx.now };
+    if (plan.brownoutStart != null) update.brownoutStart = plan.brownoutStart;
+    writes.push({ set: device.path, merge: true, data: update });
+  }
+
+  await ctx.fs.commit(writes);
+}
+
+/**
+ * Sends an alert by Telegram to app users who linked their Telegram, with
+ * the same audience as push (all sensors, or the ones they follow).
+ */
+async function telegramUsers(
+  ctx: Context,
+  path: string,
+  alert: Record<string, Plain>,
+  heading?: string,
+): Promise<void> {
+  const botToken = ctx.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return;
+  const users = await ctx.fs.query("users");
+  const linked = users.filter((user) => {
+    const chat = user.data.telegramChatId;
+    if (typeof chat !== "string" && typeof chat !== "number") return false;
+    const nodes = user.data.subscribedNodes;
+    return !Array.isArray(nodes) || nodes.length === 0 || nodes.includes(alert.deviceId as Plain);
+  });
+  if (linked.length === 0) return;
+
+  const device = await ctx.fs.get(`devices/${String(alert.deviceId ?? "")}`);
+  const nodeName = typeof device?.data.name === "string" ? device.data.name : String(alert.deviceId ?? "?");
+  const text = `${heading ? `${heading}\n` : ""}${alertMessage(alert, nodeName)}`;
+  let sent = 0;
+  for (const user of linked.slice(0, budget(ctx, 2))) {
+    await run(`telegram user ${user.id}`, async () => {
+      await sendText(botToken, String(user.data.telegramChatId), text);
+      sent++;
+    });
+  }
+  await ctx.fs.set(path, { telegramUsersNotified: sent }, true);
+}
+
+/** Fire stations from the app (fireStations) plus any in config/fireServices. */
+async function loadFireServices(ctx: Context) {
+  const [config, docs] = await Promise.all([
+    ctx.fs.get("config/fireServices"),
+    ctx.fs.query("fireStations"),
+  ]);
+  const base = parseFireServices(config?.data);
+  const extra = parseFireServices({ stations: docs.map((doc) => doc.data) });
+  return { radiusKm: base.radiusKm, stations: [...base.stations, ...extra.stations] };
+}
+
+/**
+ * Admin requests filed from the app (Spark has no callable functions):
+ * add a sensor, or send a test message to a fire station.
+ */
+async function adminRequests(ctx: Context): Promise<void> {
+  const pending = await ctx.fs.query("adminRequests", {
+    where: [{ field: "status", op: "EQUAL", value: "pending" }],
+  });
+  if (pending.length === 0) return;
+  const token = await ctx.token();
+
+  for (const request of pending) {
+    const finish = (status: string, message: string, extra: Record<string, Plain> = {}) =>
+      ctx.fs.set(request.path, { status, message, processedAt: new Date(), ...extra }, true);
+
+    await run(`admin request ${request.id}`, async () => {
+      const requester = await lookupUser(ctx.projectId, token, { uid: String(request.data.requestedBy ?? "") });
+      if (requester?.claims.role !== "admin") return finish("error", "Only administrators can do this.");
+
+      if (request.data.kind === "addNode") {
+        const add = parseAddNode(request.data);
+        if (typeof add === "string") return finish("error", add);
+        const [existing, keys] = await Promise.all([
+          ctx.fs.get(`devices/${add.nodeId}`),
+          ctx.fs.get("config/deviceKeys"),
+        ]);
+        if (existing || keys?.data[add.nodeId] != null) {
+          return finish("error", `${add.nodeId} already exists. Choose another ID.`);
+        }
+
+        const key = newNodeKey();
+        await ctx.rtdb.put(`deviceKeys/${add.nodeId}`, key);
+        const writes: Write[] = [
+          { set: "config/deviceKeys", merge: true, data: { [add.nodeId]: key } },
+          {
+            set: `devices/${add.nodeId}`,
+            data: {
+              deviceId: add.nodeId,
+              name: add.name,
+              ...(add.zone ? { zone: add.zone } : {}),
+              ...(add.terrain ? { terrain: add.terrain } : {}),
+              status: "NEW",
+              createdAt: new Date(),
+              createdBy: requester.uid,
+            },
+          },
+        ];
+        if (add.channelId) {
+          const channels = (await ctx.fs.get("config/channels"))?.data.channels;
+          const list = Array.isArray(channels) ? [...channels] : [];
+          list.push({
+            nodeId: add.nodeId,
+            channelId: add.channelId,
+            name: add.name,
+            ...(add.readApiKey ? { readApiKey: add.readApiKey } : {}),
+          });
+          writes.push({ set: "config/channels", merge: true, data: { channels: list } });
+        }
+        await ctx.fs.commit(writes);
+        deviceKeys = null; // pick up the new key at once
+        console.log(`Node added: ${add.nodeId} by ${requester.uid}`);
+        return finish("done", `${add.name} (${add.nodeId}) was added.`, { nodeId: add.nodeId, nodeKey: key });
+      }
+
+      if (request.data.kind === "testStation") {
+        const botToken = ctx.env.TELEGRAM_BOT_TOKEN;
+        if (!botToken) return finish("error", "The Telegram bot isn't set up on the backend yet.");
+        const station = await ctx.fs.get(`fireStations/${String(request.data.stationId ?? "")}`);
+        const chatId = station?.data.telegramChatId;
+        if (!station || (typeof chatId !== "string" && typeof chatId !== "number")) {
+          return finish("error", "That station has no Telegram chat.");
+        }
+        try {
+          await sendText(
+            botToken,
+            String(chatId),
+            `✅ Test from Forest Fire Monitor: ${String(station.data.name ?? "this station")} will get fire alerts here.`,
+          );
+        } catch (error) {
+          return finish("error", `Telegram refused it: ${error instanceof Error ? error.message : error}`);
+        }
+        return finish("done", "Test message sent.");
+      }
+
+      return finish("error", "Unknown request.");
+    });
+  }
+}
+
+/**
+ * Records who has messaged the bot (telegramChats) so an admin can pick a
+ * fire station's chat in the app, and greets chats that send /start.
+ */
+async function telegramInbox(ctx: Context): Promise<void> {
+  const botToken = ctx.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return;
+
+  const state = await ctx.fs.get("status/telegram");
+  const offset = typeof state?.data.offset === "number" ? state.data.offset : null;
+  const { chats, commands, nextOffset } = chatsFromUpdates(await getUpdates(botToken, offset));
+  if (nextOffset == null) return;
+
+  const writes: Write[] = chats.map((chat) => ({
+    set: `telegramChats/${chat.chatId}`,
+    merge: true,
+    data: { ...chat },
+  }));
+  writes.push({ set: "status/telegram", merge: true, data: { offset: nextOffset, checkedAt: ctx.now } });
+  await ctx.fs.commit(writes);
+
+  for (const command of commands) {
+    await run(`telegram ${command.command} ${command.chatId}`, () => telegramCommand(ctx, botToken, command));
+  }
+}
+
+/** Link codes older than this no longer work. */
+const TELEGRAM_LINK_MAX_AGE_MS = 60 * 60_000;
+
+/**
+ * /start CODE links the chat to the app user who made the code (Settings ->
+ * Connect Telegram); /start alone greets; /stop unlinks.
+ */
+async function telegramCommand(ctx: Context, botToken: string, command: BotCommand): Promise<void> {
+  if (command.command === "stop") {
+    const linked = await ctx.fs.query("users", {
+      where: [{ field: "telegramChatId", op: "EQUAL", value: command.chatId }],
+    });
+    await ctx.fs.commit(
+      linked.map((user) => ({
+        set: user.path,
+        merge: true,
+        data: { telegramChatId: null, telegramName: null, telegramLinkedAt: null },
+      })),
+    );
+    await sendText(
+      botToken,
+      command.chatId,
+      linked.length > 0
+        ? "Alerts turned off for this chat. Connect again from the app any time."
+        : "This chat wasn't getting alerts.",
+    );
+    return;
+  }
+
+  const code = command.argument;
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(code)) {
+    await sendText(
+      botToken,
+      command.chatId,
+      "Hello from Forest Fire Monitor. To get alerts here, open the app: Settings -> Connect Telegram. " +
+        "An administrator can also add this chat as a fire station.",
+    );
+    return;
+  }
+
+  const link = await ctx.fs.get(`telegramLinks/${code}`);
+  const created = asDate(link?.data.createdAt);
+  const uid = typeof link?.data.uid === "string" ? link.data.uid : null;
+  if (!link || !uid || !created || ctx.now.getTime() - created.getTime() > TELEGRAM_LINK_MAX_AGE_MS) {
+    await sendText(
+      botToken,
+      command.chatId,
+      "This link has expired. In the app, tap Connect Telegram again.",
+    );
+    return;
+  }
+
+  const chat = await ctx.fs.get(`telegramChats/${command.chatId}`);
+  await ctx.fs.commit([
+    {
+      set: `users/${uid}`,
+      merge: true,
+      data: {
+        telegramChatId: command.chatId,
+        telegramName: typeof chat?.data.name === "string" ? chat.data.name : null,
+        telegramLinkedAt: ctx.now,
+      },
+    },
+    { delete: link.path },
+  ]);
+  await sendText(
+    botToken,
+    command.chatId,
+    "✅ Connected. Forest Fire Monitor alerts for your sensors will arrive here too. Send /stop to turn them off.",
+  );
 }
 
 async function roleRequests(ctx: Context): Promise<void> {
@@ -953,8 +1289,13 @@ async function handleDeviceAlert(request: Request, env: Env): Promise<Response> 
     return json(403, { error: "Unknown node or wrong key." });
   }
 
-  const device = await ctx.fs.get(`devices/${alert.node}`);
   const confidence = alert.aiConfidence ?? 0;
+  // Older firmware alerts on fire from 50%; only confident fires count.
+  if (alert.type === "FIRE" && confidence < AI_FIRE_CONFIDENCE_THRESHOLD) {
+    return json(200, { status: "ignored", reason: "fire confidence below threshold" });
+  }
+
+  const device = await ctx.fs.get(`devices/${alert.node}`);
   const alertId = await createAlertIfNew(ctx, alert.node, alert.type, alert.severity, {
     source: "device",
     fireProbability: alert.aiClass === "Fire" ? confidence * 100 : 0,
@@ -1020,7 +1361,7 @@ export default {
     const ctx = context(env);
     const jobs: Record<string, () => Promise<void>> = {
       "* * * * *": () => ingestAll(ctx),
-      "*/1 * * * *": () => pushNewAlerts(ctx),
+      "*/1 * * * *": () => minuteJobs(ctx),
       "*/5 * * * *": () => maintenance(ctx),
       "7 * * * *": () => hourlyRollup(ctx),
       "23 21 * * *": () => deleteOldReadings(ctx),

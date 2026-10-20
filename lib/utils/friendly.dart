@@ -38,6 +38,18 @@ String alertTitle(String type) {
       return 'Satellite spotted a fire nearby';
     case 'HIGH FIRE RISK':
       return 'High fire risk';
+    case 'CAMERA_OFFLINE':
+      return 'Camera not sending photos';
+    case 'SENSOR_FAULT':
+      return 'A sensor stopped reading';
+    case 'POWER_PROBLEM':
+      return 'Power problem at the sensor';
+    case 'WEAK_WIFI':
+      return 'Weak Wi-Fi at the sensor';
+    case 'LOW_BATTERY':
+      return 'Sensor battery low';
+    case 'BOARD_HOT':
+      return 'Sensor board overheating';
     default:
       return levelLabel(type);
   }
@@ -54,6 +66,18 @@ IconData alertIcon(String type) {
       return Icons.wifi_off;
     case 'SATELLITE_HOTSPOT':
       return Icons.satellite_alt;
+    case 'CAMERA_OFFLINE':
+      return Icons.no_photography_outlined;
+    case 'SENSOR_FAULT':
+      return Icons.build_circle_outlined;
+    case 'POWER_PROBLEM':
+      return Icons.power_off_outlined;
+    case 'WEAK_WIFI':
+      return Icons.network_wifi_1_bar;
+    case 'LOW_BATTERY':
+      return Icons.battery_alert;
+    case 'BOARD_HOT':
+      return Icons.device_thermostat;
     default:
       return Icons.local_fire_department;
   }
@@ -125,6 +149,32 @@ String timeAgo(DateTime time, {DateTime? now}) {
   ];
   return '${time.day} ${months[time.month - 1]}'
       '${time.year == current.year ? '' : ' ${time.year}'}';
+}
+
+/// Alerts about the sensor itself rather than a fire.
+bool isSensorProblem(String type) => const {
+  'CAMERA_OFFLINE',
+  'SENSOR_FAULT',
+  'POWER_PROBLEM',
+  'WEAK_WIFI',
+  'LOW_BATTERY',
+  'BOARD_HOT',
+}.contains(type);
+
+/// "850 m", "4.2 km", "37 km".
+String distanceLabel(double meters) {
+  if (meters < 1000) return '${(meters / 10).round() * 10} m';
+  final km = meters / 1000;
+  return km < 10 ? '${km.toStringAsFixed(1)} km' : '${km.round()} km';
+}
+
+/// "1 min", "18 min", "1 h 25 min".
+String durationLabel(double seconds) {
+  final ceiled = (seconds / 60).ceil();
+  final minutes = ceiled < 1 ? 1 : ceiled;
+  if (minutes < 60) return '$minutes min';
+  final rest = minutes % 60;
+  return '${minutes ~/ 60} h${rest == 0 ? '' : ' $rest min'}';
 }
 
 /// "2:05 PM".

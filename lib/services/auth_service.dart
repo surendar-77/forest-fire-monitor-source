@@ -107,6 +107,32 @@ class AuthService extends ChangeNotifier {
     );
   }
 
+  /// Creates an account. New accounts are viewers (no role claim): they
+  /// see every sensor, its location and alerts, but can't respond to alerts
+  /// or add sensors until an administrator gives them a role.
+  Future<void> signUp({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final user = credential.user;
+    if (user == null) return;
+    await user.updateDisplayName(name.trim());
+    await _firestore.collection('users').doc(user.uid).set({
+      'displayName': name.trim(),
+      'email': email.trim().toLowerCase(),
+      'subscribedNodes': const <String>[],
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    // The display name is set after the first token; refresh the profile.
+    await user.reload();
+    await _handleAuthUser(_auth.currentUser);
+  }
+
   Future<void> sendPasswordReset(String email) {
     return _auth.sendPasswordResetEmail(email: email.trim());
   }
@@ -150,6 +176,12 @@ class AuthService extends ChangeNotifier {
           return 'Too many attempts. Try again in a few minutes.';
         case 'network-request-failed':
           return 'No network connection.';
+        case 'email-already-in-use':
+          return 'An account with this email already exists. Sign in instead.';
+        case 'weak-password':
+          return 'Choose a stronger password (at least 6 characters).';
+        case 'operation-not-allowed':
+          return 'New accounts are turned off. Ask your administrator.';
       }
 
       return error.message ?? 'Sign-in failed (${error.code}).';

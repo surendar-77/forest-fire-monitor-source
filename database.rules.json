@@ -31,6 +31,51 @@
       }
     },
 
+    "health": {
+      "$node": {
+        ".write": "root.child('deviceKeys').child($node).exists() && newData.child('key').val() === root.child('deviceKeys').child($node).val()",
+        ".validate": "newData.hasChildren(['info', 'key'])",
+
+        "info": {
+          ".read": "auth != null",
+          ".validate": "newData.hasChildren(['ts'])",
+          "ts": { ".validate": "newData.val() === now" },
+          "up": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "boot": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "boots": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "fw": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "batV": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10" },
+          "bat": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+          "chg": { ".validate": "newData.isBoolean()" },
+          "ssid": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "rssi": { ".validate": "newData.isNumber() && newData.val() >= -127 && newData.val() <= 0" },
+          "ip": { ".validate": "newData.isString() && newData.val().length <= 15" },
+          "net": { ".validate": "newData.isString() && newData.val().length <= 8" },
+          "ch": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 14" },
+          "apc": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10" },
+          "heap": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "minHeap": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "psram": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "chipT": { ".validate": "newData.isNumber() && newData.val() >= -40 && newData.val() <= 150" },
+          "sent": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "failed": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "frames": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "camAge": { ".validate": "newData.isNumber() && newData.val() >= -1" },
+          "aiMs": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "mq": { ".validate": "newData.isString() && newData.val().length <= 48" },
+          "dht1": { ".validate": "newData.isBoolean()" },
+          "dht2": { ".validate": "newData.isBoolean()" },
+          "lora": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "loraTx": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "tsp": { ".validate": "newData.isString() && newData.val().length <= 32" },
+          "$other": { ".validate": false }
+        },
+
+        "key": { ".validate": "newData.isString()" },
+        "$other": { ".validate": false }
+      }
+    },
+
     "deviceKeys": {
       ".read": false,
       ".write": false

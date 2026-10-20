@@ -11,7 +11,8 @@
     "crons": ["* * * * *", "*/1 * * * *", "*/5 * * * *", "7 * * * *", "23 21 * * *"]
   },
   "vars": {
-    "READING_RETENTION_DAYS": "30"
+    "READING_RETENTION_DAYS": "30",
+    "RTDB_URL": "https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app"
   },
   "observability": {
     "enabled": true

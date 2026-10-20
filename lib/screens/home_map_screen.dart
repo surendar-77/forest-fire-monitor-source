@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config/app_config.dart';
 import '../models/node_model.dart';
@@ -10,10 +11,13 @@ import '../services/auth_service.dart';
 import '../services/data_source_controller.dart';
 import '../services/gps_service.dart';
 import '../services/location_service.dart';
+import '../services/routing_service.dart';
 import '../utils/fire_areas.dart';
 import '../utils/friendly.dart';
 import '../utils/risk_utils.dart';
 import '../widgets/live_overlay_strip.dart';
+import '../widgets/node_details_sheet.dart';
+import 'add_sensor_screen.dart';
 import 'dashboard_screen.dart';
 
 enum MapLayerMode { satellite, vegetation, street }
@@ -50,6 +54,17 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   String? _placingId;
   LatLng? _pending;
   bool _saving = false;
+
+  /// Directions: where to, the road route (null when none was found, then
+  /// a straight line is shown) and whether one is being worked out.
+  final RoutingService _router = RoutingService();
+  LatLng? _routeTarget;
+  String? _routeTargetName;
+  RouteResult? _route;
+  bool _routing = false;
+
+  /// Off-road stretches shorter than this aren't drawn or mentioned.
+  static const double _offRoadMinMeters = 60;
 
   /// Collapsed height of the data panel: the handle and its label.
   static const double _sheetMin = 0.075;
@@ -140,7 +155,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     try {
       await repo.updateNodeLocation(
         id,
-        name: node?.name ?? id,
+        name: node?.name,
         latitude: double.parse(point.latitude.toStringAsFixed(6)),
         longitude: double.parse(point.longitude.toStringAsFixed(6)),
       );
@@ -283,6 +298,19 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     ];
   }
 
+  Future<void> _addSensor() async {
+    final id = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AddSensorScreen(repository: widget.controller.repository),
+      ),
+    );
+    if (id == null || !mounted) return;
+    widget.controller.selectNode(id);
+    _startPlacing(id);
+  }
+
   Future<void> _locateMe() async {
     final messenger = ScaffoldMessenger.of(context);
     final position = await _gps.getCurrentLocation();
@@ -295,6 +323,181 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     }
     setState(() => _me = LatLng(position.latitude, position.longitude));
     _map.move(_me!, 15);
+  }
+
+  /// Road route from this phone to [target], drawn on the map. Where the
+  /// roads end short of it (a sensor deep in the forest), the rest is a
+  /// dashed line to walk.
+  Future<void> _directionsTo(LatLng target, String name) async {
+    if (_routing) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _routing = true);
+
+    LatLng? me;
+    try {
+      final position = await _gps.getCurrentLocation();
+      if (position != null) me = LatLng(position.latitude, position.longitude);
+    } catch (_) {}
+    if (!mounted) return;
+    if (me == null) {
+      setState(() => _routing = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Turn on location to get directions.')),
+      );
+      return;
+    }
+
+    final route = await _router.getRoute(
+      startLatitude: me.latitude,
+      startLongitude: me.longitude,
+      endLatitude: target.latitude,
+      endLongitude: target.longitude,
+    );
+    if (!mounted) return;
+    setState(() {
+      _me = me;
+      _routeTarget = target;
+      _routeTargetName = name;
+      _route = route != null && route.points.length >= 2 ? route : null;
+      _routing = false;
+    });
+
+    final points = [me, target, ...?_route?.points];
+    final size = MediaQuery.sizeOf(context);
+    _map.fitCamera(
+      CameraFit.coordinates(
+        coordinates: points,
+        maxZoom: 17,
+        padding: EdgeInsets.fromLTRB(
+          40,
+          130,
+          80,
+          size.height * _sheetMin + 150,
+        ),
+      ),
+    );
+  }
+
+  void _clearDirections() {
+    setState(() {
+      _routeTarget = null;
+      _routeTargetName = null;
+      _route = null;
+    });
+  }
+
+  /// Turn-by-turn navigation in Google Maps (or the browser).
+  Future<void> _openNavigation(LatLng target) async {
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': '${target.latitude},${target.longitude}',
+      'travelmode': 'driving',
+    });
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Google Maps.')),
+      );
+    }
+  }
+
+  /// Distance left on foot from where the road route ends.
+  double get _offRoadMeters {
+    final target = _routeTarget;
+    final end = _route?.points.last ?? _me;
+    if (target == null || end == null) return 0;
+    return const Distance().as(LengthUnit.Meter, end, target);
+  }
+
+  List<Polyline> _routeLines() {
+    final target = _routeTarget;
+    final me = _me;
+    if (target == null || me == null) return const [];
+    const blue = Color(0xFF1E88E5);
+    final route = _route;
+    return [
+      if (route != null)
+        Polyline(
+          points: route.points,
+          strokeWidth: 6,
+          color: blue,
+          borderStrokeWidth: 2,
+          borderColor: Colors.white,
+        ),
+      if (_offRoadMeters >= _offRoadMinMeters)
+        Polyline(
+          points: [route?.points.last ?? me, target],
+          strokeWidth: 4,
+          color: route == null ? blue : Colors.white,
+          pattern: StrokePattern.dashed(segments: const [10, 8]),
+        ),
+    ];
+  }
+
+  Widget _routeCard() {
+    final target = _routeTarget!;
+    final route = _route;
+    final offRoad = _offRoadMeters;
+    final String summary;
+    if (route == null) {
+      summary =
+          '${distanceLabel(offRoad)} in a straight line · no road route found';
+    } else {
+      summary =
+          '${distanceLabel(route.distanceMeters)} by road · about '
+          '${durationLabel(route.durationSeconds)}'
+          '${offRoad >= _offRoadMinMeters ? ' + ${distanceLabel(offRoad)} on foot' : ''}';
+    }
+    return Material(
+      color: Colors.white,
+      elevation: 6,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+        child: Row(
+          children: [
+            const CircleAvatar(
+              backgroundColor: Color(0xFFE3F2FD),
+              child: Icon(Icons.directions, color: Color(0xFF1E88E5)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'To $_routeTargetName',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    summary,
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            FilledButton.icon(
+              onPressed: () => _openNavigation(target),
+              icon: const Icon(Icons.navigation_outlined, size: 18),
+              label: const Text('Navigate'),
+            ),
+            IconButton(
+              tooltip: 'Close directions',
+              icon: const Icon(Icons.close),
+              onPressed: _clearDirections,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -344,6 +547,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                       _polygon(a),
                   ],
                 ),
+                if (_routeTarget != null) PolylineLayer(polylines: _routeLines()),
                 MarkerLayer(
                   markers: [
                     for (final n in nodes)
@@ -439,6 +643,39 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                   _layerButton(),
                   const SizedBox(height: 8),
                   _roundButton(Icons.my_location, 'My location', _locateMe),
+                  if (_selected != null &&
+                      _selected!.hasLocation &&
+                      _placingId == null) ...[
+                    const SizedBox(height: 8),
+                    _routing
+                        ? const Material(
+                            color: Colors.white,
+                            shape: CircleBorder(),
+                            elevation: 3,
+                            child: Padding(
+                              padding: EdgeInsets.all(14),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              ),
+                            ),
+                          )
+                        : _roundButton(
+                            Icons.directions,
+                            'Directions to ${_selected!.name}',
+                            () => _directionsTo(
+                              LatLng(
+                                _selected!.latitude,
+                                _selected!.longitude,
+                              ),
+                              _selected!.name,
+                            ),
+                            color: const Color(0xFF1E88E5),
+                          ),
+                  ],
                   if (widget.auth.isAdmin &&
                       _selected != null &&
                       _placingId == null) ...[
@@ -455,6 +692,14 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                     'Back to sensor',
                     () => _map.move(_home, 15),
                   ),
+                  if (widget.auth.isAdmin && _placingId == null) ...[
+                    const SizedBox(height: 8),
+                    _roundButton(
+                      Icons.add_circle_outline,
+                      'Add a sensor',
+                      _addSensor,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -478,6 +723,15 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             ),
 
             if (_placingId != null) ..._placingOverlay(),
+
+            // Directions summary, just above the data panel.
+            if (_routeTarget != null && _placingId == null)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: MediaQuery.sizeOf(context).height * _sheetMin + 22,
+                child: _routeCard(),
+              ),
 
             // Admins: a sensor without a location yet.
             if (_placingId == null &&
@@ -675,7 +929,15 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
       height: 66,
       alignment: Alignment.topCenter,
       child: GestureDetector(
-        onTap: () => widget.controller.selectNode(n.id),
+        onTap: () {
+          widget.controller.selectNode(n.id);
+          showNodeDetails(
+            context,
+            n,
+            onDirections: () =>
+                _directionsTo(LatLng(n.latitude, n.longitude), n.name),
+          );
+        },
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -787,14 +1049,19 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     );
   }
 
-  Widget _roundButton(IconData icon, String tooltip, VoidCallback onTap) {
+  Widget _roundButton(
+    IconData icon,
+    String tooltip,
+    VoidCallback onTap, {
+    Color? color,
+  }) {
     return Material(
       color: Colors.white,
       shape: const CircleBorder(),
       elevation: 3,
       child: IconButton(
         tooltip: tooltip,
-        icon: Icon(icon, color: Colors.grey.shade800),
+        icon: Icon(icon, color: color ?? Colors.grey.shade800),
         onPressed: onTap,
       ),
     );
@@ -869,6 +1136,18 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                 'spread in the next hour, from the wind and the fire-spread model. These are estimates, '
                 'not mapped fire lines.',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _directionsTo(a.center, a.title);
+                  },
+                  icon: const Icon(Icons.directions),
+                  label: const Text('Directions to this fire'),
+                ),
               ),
               if (a.alertId != null && widget.onOpenAlerts != null) ...[
                 const SizedBox(height: 16),

@@ -275,18 +275,95 @@ class NodeRepository extends ChangeNotifier {
     });
   }
 
+  /// "Real fire" keeps the alert open and marks it handled; "False alarm"
+  /// also resolves it, recorded as a false alarm.
+  Future<void> markVerdict(AlertModel alert, String verdict) async {
+    final user = _auth.currentUser;
+    final doc = _firestore.collection('alerts').doc(alert.id);
+
+    await doc.update({
+      'verdict': verdict,
+      'verdictBy': user?.uid,
+      'verdictByName': user?.displayName ?? user?.email,
+      'verdictAt': FieldValue.serverTimestamp(),
+    });
+    if (alert.status == AlertStatus.active) await acknowledgeAlert(alert.id);
+    if (verdict == AlertVerdict.falseAlarm) {
+      await resolveIncident(
+        alert.id,
+        notes: 'Marked as a false alarm.',
+        outcome: AlertOutcome.falseAlarm,
+      );
+    }
+  }
+
   // ----------------------------------------------------------
   // NODE SETUP (administrators; enforced by security rules)
   // ----------------------------------------------------------
 
+  /// Next free id like NODE-02.
+  String suggestNodeId() {
+    var highest = 0;
+    for (final id in _nodes.keys) {
+      final match = RegExp(r'^NODE-(\d+)$').firstMatch(id);
+      if (match != null) {
+        final n = int.parse(match.group(1)!);
+        if (n > highest) highest = n;
+      }
+    }
+    return 'NODE-${(highest + 1).toString().padLeft(2, '0')}';
+  }
+
+  /// Asks the backend to create a sensor and its secret key. Waits for the
+  /// backend (it checks requests every minute) and returns the key, which
+  /// goes into the new board's firmware.
+  Future<String> addSensor({
+    required String nodeId,
+    required String name,
+    String? zone,
+    String? terrain,
+    String? channelId,
+    String? readApiKey,
+  }) async {
+    String? clean(String? v) =>
+        v == null || v.trim().isEmpty ? null : v.trim();
+    final request = await _firestore.collection('adminRequests').add({
+      'kind': 'addNode',
+      'requestedBy': _auth.currentUser?.uid,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+      'nodeId': nodeId.trim().toUpperCase(),
+      'name': name.trim(),
+      'zone': ?clean(zone),
+      'terrain': ?clean(terrain),
+      'channelId': ?clean(channelId),
+      'readApiKey': ?clean(readApiKey),
+    });
+
+    final result = await request
+        .snapshots()
+        .map((snapshot) => snapshot.data())
+        .firstWhere((data) => data != null && data['status'] != 'pending')
+        .timeout(
+          const Duration(minutes: 3),
+          onTimeout: () => throw TimeoutException(
+            'The backend did not answer. Check that it is running.',
+          ),
+        );
+    if (result!['status'] != 'done') {
+      throw Exception(result['message'] ?? 'The sensor could not be added.');
+    }
+    return result['nodeKey'] as String;
+  }
+
   Future<void> updateNodeLocation(
     String nodeId, {
-    required String name,
+    String? name,
     required double latitude,
     required double longitude,
   }) {
     return _firestore.collection('devices').doc(nodeId).set({
-      'name': name,
+      'name': ?name,
       'latitude': latitude,
       'longitude': longitude,
     }, SetOptions(merge: true));

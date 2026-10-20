@@ -1,4 +1,4 @@
-package com.example.forest_fire_monitor
+package io.github.surendar77.forestfire
 
 import io.flutter.embedding.android.FlutterActivity
 

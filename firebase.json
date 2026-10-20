@@ -4,7 +4,7 @@
       "android": {
         "default": {
           "projectId": "forest-fire-3d2f0",
-          "appId": "1:436247104577:android:434d8de8a126bc120a8ac0",
+          "appId": "1:436247104577:android:4a9e47e3c294294a0a8ac0",
           "fileOutput": "android/app/google-services.json"
         }
       },
@@ -12,7 +12,7 @@
         "lib/firebase_options.dart": {
           "projectId": "forest-fire-3d2f0",
           "configurations": {
-            "android": "1:436247104577:android:434d8de8a126bc120a8ac0",
+            "android": "1:436247104577:android:4a9e47e3c294294a0a8ac0",
             "ios": "1:436247104577:ios:72b4edc4c61d97aa0a8ac0",
             "macos": "1:436247104577:ios:72b4edc4c61d97aa0a8ac0",
             "web": "1:436247104577:web:19ba6f550c44ec160a8ac0",

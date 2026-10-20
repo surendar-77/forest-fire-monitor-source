@@ -6,7 +6,10 @@ export interface AlertDecision {
   severity: "MODERATE" | "HIGH" | "CRITICAL";
 }
 
-export const AI_FIRE_CONFIDENCE_THRESHOLD = 0.5;
+/** Camera "Fire" only counts (alert, risk) from this confidence up. */
+export const AI_FIRE_CONFIDENCE_THRESHOLD = 0.75;
+/** Camera "Smoke" is less often mistaken and earlier warning, so lower. */
+export const AI_SMOKE_CONFIDENCE_THRESHOLD = 0.5;
 
 const HIGH_DANGER = new Set(["HIGH", "VERY HIGH"]);
 
@@ -21,15 +24,16 @@ export function decideAlert(
   anomaly: AnomalyResult,
   dangerLevel: string | null,
 ): AlertDecision | null {
-  const confident = reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD;
+  const fireConfident = reading.aiConfidence >= AI_FIRE_CONFIDENCE_THRESHOLD;
+  const smokeConfident = reading.aiConfidence >= AI_SMOKE_CONFIDENCE_THRESHOLD;
   const sensorsAgree = anomaly.level === "SUSPICIOUS" || anomaly.level === "LIKELY";
   const highDanger = dangerLevel != null && HIGH_DANGER.has(dangerLevel);
 
-  if (reading.fireDetected && confident) {
+  if (reading.fireDetected && fireConfident) {
     return { type: "FIRE", severity: sensorsAgree || highDanger ? "CRITICAL" : "HIGH" };
   }
 
-  if (reading.smokeDetected && confident) {
+  if (reading.smokeDetected && smokeConfident) {
     return { type: "SMOKE", severity: sensorsAgree || highDanger ? "HIGH" : "MODERATE" };
   }
 
@@ -108,4 +112,15 @@ export function foldRepeatDetection(alert: Record<string, unknown>, now: Date): 
     alert.confirmedAt == null &&
     now.getTime() - streakStartedAt >= CONFIRM_AFTER_MS;
   return { lastDetectedAt: now, streakStartedAt: new Date(streakStartedAt), detections, confirmNow };
+}
+
+/**
+ * An open "node offline" alert is over once the node has reported after it
+ * was raised. Status flips can be missed (ingest marks a node ONLINE before
+ * the health check runs), so outages are judged by lastSeen, not status.
+ */
+export function outageEnded(alert: Record<string, unknown>, lastSeen: Date | null): boolean {
+  const raised = asTime(alert.detectedAt) ?? asTime(alert.timestamp) ?? asTime(alert.createdAt);
+  if (raised == null || lastSeen == null) return false;
+  return lastSeen.getTime() > raised;
 }

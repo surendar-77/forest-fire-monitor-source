@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/app_user.dart';
 import '../services/app_update.dart';
@@ -8,6 +11,8 @@ import '../services/auth_service.dart';
 import '../services/fcm_service.dart';
 import '../services/node_repository.dart';
 import '../services/notification_service.dart';
+import 'add_sensor_screen.dart';
+import 'fire_stations_screen.dart';
 import 'location_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -60,6 +65,7 @@ class SettingsScreen extends StatelessWidget {
               _sectionTitle(context, 'Alert notifications'),
               _SubscriptionTile(auth: auth, repository: repository, user: user),
               const _NearbyAlertsTile(),
+              _TelegramTile(uid: user.uid),
               const _AlarmTestTile(),
               const Divider(),
               _sectionTitle(context, 'Device'),
@@ -93,6 +99,35 @@ class SettingsScreen extends StatelessWidget {
               if (auth.isAdmin) ...[
                 const Divider(),
                 _sectionTitle(context, 'Administration'),
+                ListTile(
+                  leading: const Icon(Icons.add_circle_outline),
+                  title: const Text('Add a sensor'),
+                  subtitle: const Text(
+                    'Register a new board and get its firmware key',
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AddSensorScreen(
+                        repository: repository,
+                        canPlaceOnMap: false,
+                      ),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.fire_truck_outlined),
+                  title: const Text('Fire stations'),
+                  subtitle: const Text(
+                    'Who gets serious fire alerts by Telegram',
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const FireStationsScreen(),
+                    ),
+                  ),
+                ),
                 ListTile(
                   leading: const Icon(Icons.manage_accounts_outlined),
                   title: const Text('Set a user\'s role'),
@@ -373,6 +408,92 @@ class _NearbyAlertsTileState extends State<_NearbyAlertsTile> {
       ),
       value: _enabled,
       onChanged: _busy ? null : _toggle,
+    );
+  }
+}
+
+/// "Get alerts on Telegram too": makes a one-time code and opens the bot
+/// with it; the backend links the chat to this account.
+class _TelegramTile extends StatelessWidget {
+  const _TelegramTile({required this.uid});
+
+  final String uid;
+
+  static String _newCode() {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return List.generate(24, (_) => chars[random.nextInt(chars.length)]).join();
+  }
+
+  Future<void> _connect(BuildContext context, String bot) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final code = _newCode();
+      await FirebaseFirestore.instance.collection('telegramLinks').doc(code).set(
+        {'uid': uid, 'createdAt': FieldValue.serverTimestamp()},
+      );
+      final opened = await launchUrl(
+        Uri.https('t.me', '/$bot', {'start': code}),
+        mode: LaunchMode.externalApplication,
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            opened
+                ? 'In Telegram, tap Start. You will be connected within a minute.'
+                : 'Could not open Telegram. Install it and try again.',
+          ),
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('Could not connect: $error')));
+    }
+  }
+
+  Future<void> _disconnect(BuildContext context) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      'telegramChatId': FieldValue.delete(),
+      'telegramName': FieldValue.delete(),
+      'telegramLinkedAt': FieldValue.delete(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final firestore = FirebaseFirestore.instance;
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: firestore.collection('status').doc('backend').snapshots(),
+      builder: (context, backend) {
+        final bot = backend.data?.data()?['telegramBot'];
+        if (bot is! String || bot.isEmpty) return const SizedBox.shrink();
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: firestore.collection('users').doc(uid).snapshots(),
+          builder: (context, profile) {
+            final data = profile.data?.data();
+            final chat = data?['telegramChatId'];
+            final linked = chat is String && chat.isNotEmpty;
+            final name = data?['telegramName'];
+            return ListTile(
+              leading: Icon(
+                Icons.send_outlined,
+                color: linked ? Colors.green.shade700 : null,
+              ),
+              title: Text(linked ? 'Telegram alerts on' : 'Get alerts on Telegram too'),
+              subtitle: Text(
+                linked
+                    ? 'Alerts also go to ${name is String ? name : 'your Telegram'} (@$bot).'
+                    : 'A second way to get alerts, through @$bot.',
+              ),
+              trailing: TextButton(
+                onPressed: () =>
+                    linked ? _disconnect(context) : _connect(context, bot),
+                child: Text(linked ? 'Turn off' : 'Connect'),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

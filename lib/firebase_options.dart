@@ -53,7 +53,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAMgPqMDeKeY_Vgc5ehmokpZiHvNgqYsX0',
-    appId: '1:436247104577:android:434d8de8a126bc120a8ac0',
+    appId: '1:436247104577:android:4a9e47e3c294294a0a8ac0',
     messagingSenderId: '436247104577',
     projectId: 'forest-fire-3d2f0',
     databaseURL: 'https://forest-fire-3d2f0-default-rtdb.asia-southeast1.firebasedatabase.app',

@@ -24,7 +24,7 @@ val keystoreProperties = Properties().apply {
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 
 android {
-    namespace = "com.example.forest_fire_monitor"
+    namespace = "io.github.surendar77.forestfire"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -37,7 +37,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.forest_fire_monitor"
+        applicationId = "io.github.surendar77.forestfire"
 
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion

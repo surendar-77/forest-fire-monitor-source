@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy · Forest Fire Monitor</title>
+  <style>
+    :root { --text: #1f2a24; --muted: #5b6b62; --bg: #ffffff; --accent: #2e7d32; }
+    @media (prefers-color-scheme: dark) {
+      :root { --text: #e6ece8; --muted: #a3b2a9; --bg: #121614; --accent: #81c784; }
+    }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { font-size: 1.8rem; margin: 0 0 4px; }
+    h2 { font-size: 1.15rem; margin: 28px 0 6px; }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); }
+    ul { padding-left: 20px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="muted">Forest Fire Monitor · last updated 20 October 2026</p>
+
+  <p>Forest Fire Monitor shows readings and fire alerts from forest sensors. This page explains what the
+    app collects, why, and what you can do about it.</p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><strong>Account:</strong> your name, email address and password (the password is handled by Google
+      Firebase Authentication; we never see it).</li>
+    <li><strong>Notification token:</strong> an identifier for your device so alerts can be sent to it.</li>
+    <li><strong>Location (optional):</strong> only if you turn on "Alert me about fires near me" or use
+      directions. Your approximate location is stored so serious alerts within 10 km can reach you; directions
+      use it on your phone only to draw the route.</li>
+    <li><strong>Telegram (optional):</strong> if you connect Telegram, your Telegram chat ID and display name,
+      so alerts can be sent there.</li>
+    <li><strong>Your actions:</strong> when you acknowledge or resolve an alert, or mark it as a real fire or a
+      false alarm, your name is saved with it.</li>
+  </ul>
+
+  <h2>Why</h2>
+  <p>Only to run the service: sign you in, send you fire and sensor alerts, record who handled an alert, and
+    measure how accurate fire detection is. We do not sell your data, show ads, or use it for anything else.</p>
+
+  <h2>Who processes it</h2>
+  <p>Data is stored with Google Firebase (authentication, database, notifications) and processed by a
+    Cloudflare Workers service. Crash reports may be sent to Firebase Crashlytics. If you connect Telegram,
+    alert messages are delivered through Telegram. Maps use Esri, NASA and OpenStreetMap tiles; directions use
+    a routing service that receives the start and end points of the route.</p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Turn off nearby alerts or Telegram alerts any time in Settings (or send /stop to the bot).</li>
+    <li>Location permission can be refused or withdrawn in your phone's settings.</li>
+    <li>To delete your account and its data, open an issue at the link below and we will delete it.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions or deletion requests:
+    <a href="https://github.com/surendar-77/forest-fire-monitor/issues">github.com/surendar-77/forest-fire-monitor/issues</a>.</p>
+</main>
+</body>
+</html>

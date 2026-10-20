@@ -32,6 +32,12 @@ class AlertOutcome {
   }
 }
 
+/// A responder's quick call on an open camera alert, before it is resolved.
+class AlertVerdict {
+  static const String real = 'REAL';
+  static const String falseAlarm = 'FALSE_ALARM';
+}
+
 class AlertModel {
   final String id;
   final String deviceId;
@@ -65,6 +71,15 @@ class AlertModel {
   /// When the sensor last reported this fire (repeats extend the alert).
   final DateTime? lastDetectedAt;
 
+  /// "Real fire" / "False alarm" from a responder ([AlertVerdict]).
+  final String? verdict;
+
+  /// Plain-language detail from the backend (sensor-problem alerts).
+  final String? message;
+
+  /// Camera AI confidence (0-1) when the alert came from the camera.
+  final double? aiConfidence;
+
   const AlertModel({
     required this.id,
     required this.deviceId,
@@ -86,7 +101,23 @@ class AlertModel {
     this.outcome,
     this.confirmedAt,
     this.lastDetectedAt,
+    this.verdict,
+    this.message,
+    this.aiConfidence,
   });
+
+  /// Raised by the camera AI (fire or smoke).
+  bool get isCamera => type == 'FIRE' || type == 'SMOKE';
+
+  /// Someone said it was real, by verdict or when resolving.
+  bool get judgedReal =>
+      verdict == AlertVerdict.real || outcome == AlertOutcome.confirmedFire;
+
+  /// Someone said it was a false alarm, by verdict or when resolving.
+  bool get judgedFalse =>
+      !judgedReal &&
+      (verdict == AlertVerdict.falseAlarm ||
+          outcome == AlertOutcome.falseAlarm);
 
   bool get isOpen =>
       status == AlertStatus.active || status == AlertStatus.acknowledged;
@@ -123,6 +154,9 @@ class AlertModel {
       outcome: outcome ?? this.outcome,
       confirmedAt: confirmedAt,
       lastDetectedAt: lastDetectedAt,
+      verdict: verdict,
+      message: message,
+      aiConfidence: aiConfidence,
     );
   }
 
@@ -142,6 +176,10 @@ class AlertModel {
     final latitude = parseDouble(data['latitude'], 0);
     final longitude = parseDouble(data['longitude'], 0);
     final hasLocation = latitude != 0 || longitude != 0;
+    final readings = data['sensorReadings'];
+    final aiConfidence = readings is Map
+        ? parseDoubleOrNull(readings['aiConfidence'])
+        : null;
 
     return AlertModel(
       id: parseString(data['alertId'], documentId),
@@ -166,6 +204,9 @@ class AlertModel {
       outcome: parseStringOrNull(data['outcome']),
       confirmedAt: parseDateTimeOrNull(data['confirmedAt']),
       lastDetectedAt: parseDateTimeOrNull(data['lastDetectedAt']),
+      verdict: parseStringOrNull(data['verdict']),
+      message: parseStringOrNull(data['message']),
+      aiConfidence: aiConfidence,
     );
   }
 

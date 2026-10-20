@@ -6,7 +6,7 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
+    
     function signedIn() {
       return request.auth != null;
     }
@@ -74,7 +74,17 @@ service cloud.firestore {
     match /alerts/{alertId} {
       allow read: if signedIn();
 
-      allow update: if isResponder() && (acknowledging() || resolving());
+      allow update: if isResponder() && (acknowledging() || resolving() || judging());
+
+      // "Real fire" / "False alarm" on an open alert, without changing its
+      // status (a real fire stays open until it is out).
+      function judging() {
+        return resource.data.status in ['ACTIVE', 'ACKNOWLEDGED']
+          && changedKeys().hasOnly(['verdict', 'verdictBy', 'verdictByName', 'verdictAt'])
+          && request.resource.data.verdict in ['REAL', 'FALSE_ALARM']
+          && request.resource.data.verdictBy == request.auth.uid
+          && request.resource.data.verdictAt == request.time;
+      }
 
       function acknowledging() {
         return resource.data.status == 'ACTIVE'
@@ -110,8 +120,11 @@ service cloud.firestore {
           ['subscribedNodes', 'displayName', 'email', 'updatedAt', 'notificationPrefs']);
 
       allow update: if signedIn() && request.auth.uid == uid
-        && changedKeys().hasOnly(
-          ['subscribedNodes', 'displayName', 'email', 'updatedAt', 'notificationPrefs']);
+        && (changedKeys().hasOnly(
+              ['subscribedNodes', 'displayName', 'email', 'updatedAt', 'notificationPrefs'])
+            // Disconnect Telegram: remove the link (only the bot sets it).
+            || (changedKeys().hasOnly(['telegramChatId', 'telegramName', 'telegramLinkedAt'])
+                && request.resource.data.get('telegramChatId', null) == null));
 
     }
 
@@ -140,6 +153,52 @@ service cloud.firestore {
         && request.resource.data.status == 'pending'
         && request.resource.data.role in ['viewer', 'officer', 'admin']
         && request.resource.data.email is string;
+    }
+
+    // Admin requests the backend carries out: add a sensor (it returns the
+    // new sensor's key to the requesting admin only), test a fire station.
+    match /adminRequests/{requestId} {
+      allow read: if isAdmin() && resource.data.requestedBy == request.auth.uid;
+
+      allow create: if isAdmin()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.kind in ['addNode', 'testStation']
+        && request.resource.data.keys().hasOnly([
+          'kind', 'requestedBy', 'status', 'createdAt', 'nodeId', 'name', 'zone',
+          'terrain', 'channelId', 'readApiKey', 'stationId']);
+    }
+
+    // One-time codes for "Connect Telegram": the app makes one, the user
+    // sends it to the bot (t.me/<bot>?start=CODE), the backend links the chat.
+    match /telegramLinks/{code} {
+      allow create: if signedIn()
+        && code.size() >= 16 && code.size() <= 64
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt']);
+    }
+
+    // Fire stations told about serious alerts by Telegram; admins manage them.
+    match /fireStations/{stationId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(
+          ['name', 'telegramChatId', 'phone', 'latitude', 'longitude', 'updatedAt', 'updatedBy'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.telegramChatId is string
+        && request.resource.data.telegramChatId.size() <= 32
+        && (!('phone' in request.resource.data)
+            || (request.resource.data.phone is string && request.resource.data.phone.size() <= 20))
+        && (!('latitude' in request.resource.data) || validCoordinates(request.resource.data));
+    }
+
+    // People and groups who messaged the bot (written by the backend), so an
+    // admin can pick a station's chat.
+    match /telegramChats/{chatId} {
+      allow read: if isAdmin();
     }
 
     // Backend heartbeat, so the app can warn when the alert service is down.

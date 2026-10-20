@@ -13,6 +13,9 @@ const SCOPES = [
   "https://www.googleapis.com/auth/datastore",
   "https://www.googleapis.com/auth/firebase.messaging",
   "https://www.googleapis.com/auth/identitytoolkit",
+  // Realtime Database REST (board health, device keys).
+  "https://www.googleapis.com/auth/firebase.database",
+  "https://www.googleapis.com/auth/userinfo.email",
 ].join(" ");
 
 let cached: { token: string; expires: number; email: string } | null = null;

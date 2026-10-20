@@ -85,3 +85,6 @@ ml/data/india/weather/
 # Published APKs (tool/release_apk.ps1)
 releases/
 worker/public/apk/
+
+# Local tooling
+.claude/

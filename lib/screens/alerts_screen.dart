@@ -92,6 +92,17 @@ class _AlertsScreenState extends State<AlertsScreen> {
     }, 'Alert resolved.');
   }
 
+  Future<void> _verdict(AlertModel alert, String verdict) async {
+    final repository = widget.repository;
+    if (repository == null) return;
+    await _runAction(
+      () => repository.markVerdict(alert, verdict),
+      verdict == AlertVerdict.real
+          ? 'Marked as a real fire. Resolve it once the fire is out.'
+          : 'Marked as a false alarm and resolved. Thanks, this trains the camera AI.',
+    );
+  }
+
   Future<void> _runAction(Future<void> Function() action, String done) async {
     final messenger = ScaffoldMessenger.of(context);
 
@@ -191,6 +202,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 ),
               ],
               const SizedBox(height: 12),
+              if (widget.repository != null)
+                CameraAccuracyCard(alerts: all),
               if (_showResolved && resolved.isNotEmpty) ...[
                 _outcomeSummary(resolved),
                 const SizedBox(height: 8),
@@ -322,6 +335,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final color = severityColor(alert.severity);
     final canAck = _canRespond && alert.status == AlertStatus.active;
     final canResolve = _canRespond && alert.status == AlertStatus.acknowledged;
+    final canJudge = _canRespond &&
+        widget.repository != null &&
+        alert.isOpen &&
+        alert.isCamera &&
+        alert.verdict == null;
 
     return Card(
       child: InkWell(
@@ -370,6 +388,69 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                 ],
               ),
+              if (alert.message != null) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 52),
+                  child: Text(
+                    alert.message!,
+                    style: TextStyle(color: Colors.grey.shade800, fontSize: 13),
+                  ),
+                ),
+              ],
+              if (alert.isOpen && alert.verdict == AlertVerdict.real) ...[
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: EdgeInsets.only(left: 52),
+                  child: Pill('Confirmed real by a responder', color: Colors.red),
+                ),
+              ],
+              if (canJudge) ...[
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.only(left: 52),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Is it a real fire?',
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                              ),
+                              onPressed: () =>
+                                  _verdict(alert, AlertVerdict.real),
+                              icon: const Icon(
+                                Icons.local_fire_department,
+                                size: 18,
+                              ),
+                              label: const Text('Real fire'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _verdict(alert, AlertVerdict.falseAlarm),
+                              icon: const Icon(Icons.block, size: 18),
+                              label: const Text('False alarm'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (canAck || canResolve) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -491,10 +572,21 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   'When',
                   '${timeAgo(alert.detectedAt)} (${_dateTime(alert.detectedAt)})',
                 ),
-                _row(
-                  'Camera',
-                  'fire ${alert.fireProbability.toStringAsFixed(0)}% · smoke ${alert.smokeProbability.toStringAsFixed(0)}%',
-                ),
+                if (alert.message != null) _row('What happened', alert.message!),
+                if (alert.isCamera)
+                  _row(
+                    'Camera AI',
+                    alert.aiConfidence != null
+                        ? '${alert.type == 'FIRE' ? 'Fire' : 'Smoke'} · ${(alert.aiConfidence! * 100).round()}% sure'
+                        : 'fire ${alert.fireProbability.toStringAsFixed(0)}% · smoke ${alert.smokeProbability.toStringAsFixed(0)}%',
+                  ),
+                if (alert.verdict != null)
+                  _row(
+                    'Responder said',
+                    alert.verdict == AlertVerdict.real
+                        ? 'Real fire'
+                        : 'False alarm',
+                  ),
                 _row(
                   'Weather at sensor',
                   '${alert.temperature.toStringAsFixed(1)}°C · ${alert.humidity.toStringAsFixed(0)}% humidity',
@@ -565,6 +657,114 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final day = t.day.toString().padLeft(2, '0');
     final month = t.month.toString().padLeft(2, '0');
     return '$day/$month/${t.year}, ${clockTime(t)}';
+  }
+}
+
+/// How often the camera AI was right, from responders' "Real fire" /
+/// "False alarm" calls and resolution outcomes, and which confidence
+/// threshold would have separated the two.
+class CameraAccuracyCard extends StatelessWidget {
+  const CameraAccuracyCard({super.key, required this.alerts});
+
+  final List<AlertModel> alerts;
+
+  static double? _average(Iterable<double> values) =>
+      values.isEmpty ? null : values.reduce((a, b) => a + b) / values.length;
+
+  /// A whole-percent threshold above every false alarm and at or below
+  /// every real fire, or null when none separates them.
+  static int? separatingThreshold(List<double> real, List<double> falses) {
+    if (real.isEmpty || falses.isEmpty) return null;
+    final above = (falses.reduce((a, b) => a > b ? a : b) * 100).floor() + 1;
+    final lowestReal = (real.reduce((a, b) => a < b ? a : b) * 100).floor();
+    return above <= lowestReal && above <= 99 ? above : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final judged = alerts
+        .where((a) => a.isCamera && (a.judgedReal || a.judgedFalse))
+        .toList();
+    if (judged.isEmpty) return const SizedBox.shrink();
+
+    final real = judged.where((a) => a.judgedReal).toList();
+    final falses = judged.where((a) => a.judgedFalse).toList();
+    final percent = (real.length * 100 / judged.length).round();
+    final realConf = [for (final a in real) ?a.aiConfidence];
+    final falseConf = [for (final a in falses) ?a.aiConfidence];
+    final avgReal = _average(realConf);
+    final avgFalse = _average(falseConf);
+    final threshold = separatingThreshold(realConf, falseConf);
+    final color = percent >= 80
+        ? Colors.green.shade700
+        : percent >= 50
+        ? Colors.orange.shade800
+        : Colors.red.shade700;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: color.withValues(alpha: 0.10),
+              child: Text(
+                '$percent%',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Camera AI accuracy',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${real.length} real fire${real.length == 1 ? '' : 's'}, '
+                    '${falses.length} false alarm${falses.length == 1 ? '' : 's'} '
+                    '(of ${judged.length} checked by responders)',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                  ),
+                  if (avgReal != null || avgFalse != null)
+                    Text(
+                      [
+                        if (avgReal != null)
+                          'real fires averaged ${(avgReal * 100).round()}% sure',
+                        if (avgFalse != null)
+                          'false alarms ${(avgFalse * 100).round()}%',
+                      ].join(' · '),
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    ),
+                  if (threshold != null && threshold > 75)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Alerting from $threshold% instead of 75% would have kept every real fire '
+                        'and stopped these false alarms.',
+                        style: TextStyle(
+                          color: Colors.blue.shade800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -71,14 +71,19 @@ export function alertMessage(alert: Record<string, Plain>, nodeName: string): st
         ? "SMOKE DETECTED (camera AI)"
         : alert.type === "SENSOR_ANOMALY"
           ? "Smoke/heat anomaly on sensors"
+          : alert.type === "NODE_OFFLINE"
+            ? "Sensor went offline"
+          : typeof alert.message === "string"
+            ? "Sensor problem"
           : alert.type === "SATELLITE_HOTSPOT"
             ? "Satellite fire detection (NASA VIIRS)"
             : String(alert.type ?? "Fire alert");
 
   const lines = [
-    `🔥 ${alert.severity ?? "HIGH"} · ${kind}`,
+    `${typeof alert.message === "string" ? "🔧" : "🔥"} ${alert.severity ?? "HIGH"} · ${kind}`,
     `Node: ${nodeName} (${alert.deviceId ?? "?"})`,
   ];
+  if (typeof alert.message === "string") lines.push(alert.message);
   if (typeof alert.temperature === "number" && alert.temperature !== 0) {
     lines.push(`Temperature: ${alert.temperature.toFixed(1)} °C`);
   }
