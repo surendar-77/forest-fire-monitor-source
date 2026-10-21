@@ -157,6 +157,7 @@ class SimulationService extends MonitoringDataSource {
       latitude: _data.latitude,
       longitude: _data.longitude,
       detectedAt: DateTime.now(),
+      confirmedAt: type == 'CRITICAL FIRE' ? DateTime.now() : null,
       status: 'ACTIVE',
     );
 

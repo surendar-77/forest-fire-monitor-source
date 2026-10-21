@@ -510,10 +510,12 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
       builder: (context, _) {
         final repo = widget.controller.repository;
         final live = widget.controller.isLive;
-        final nodes = live ? repo.nodes : const <NodeModel>[];
-        final areas = live
-            ? estimateFireAreas(nodes: nodes, alerts: repo.alerts)
-            : const <FireArea>[];
+        final demo = widget.controller.simulationService;
+        final nodes = live ? repo.nodes : [_demoNode()];
+        final areas = estimateFireAreas(
+          nodes: nodes,
+          alerts: live ? repo.alerts : demo.alertHistory,
+        );
         _centerOnSelectedOnce();
 
         return Stack(
@@ -916,6 +918,23 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     shadows: const [Shadow(blurRadius: 4), Shadow(blurRadius: 8)],
   );
 
+  /// The practice sensor shown in demo mode, placed where the real sensor is
+  /// so the map stays familiar.
+  NodeModel _demoNode() {
+    final data = widget.controller.simulationService.data;
+    return NodeModel(
+      id: data.deviceId,
+      name: 'Demo sensor',
+      detection: data.copyWith(
+        latitude: _home.latitude,
+        longitude: _home.longitude,
+      ),
+      reportedStatus: 'ONLINE',
+      hasLocation: true,
+      lastSeen: DateTime.now(),
+    );
+  }
+
   Marker _nodeMarker(NodeModel n) {
     final selected = n.id == widget.controller.selectedNodeId;
     final offline =
@@ -930,6 +949,16 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
       alignment: Alignment.topCenter,
       child: GestureDetector(
         onTap: () {
+          if (widget.controller.isSimulation) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Demo sensor. Swipe up the panel and try a scenario.',
+                ),
+              ),
+            );
+            return;
+          }
           widget.controller.selectNode(n.id);
           showNodeDetails(
             context,

@@ -12,6 +12,7 @@ enum DataSourceMode { simulation, live }
 class DataSourceController extends ChangeNotifier {
   DataSourceController({required this.repository}) {
     repository.addListener(_handleRepositoryChange);
+    _simulationService.addListener(_handleSimulationChange);
   }
 
   final NodeRepository repository;
@@ -93,6 +94,11 @@ class DataSourceController extends ChangeNotifier {
     return _liveSource = LiveNodeSource(repository: repository, nodeId: nodeId);
   }
 
+  /// A demo scenario changed the practice data: redraw the screens.
+  void _handleSimulationChange() {
+    if (isSimulation) notifyListeners();
+  }
+
   /// Keeps a valid node selected as nodes appear or disappear.
   void _handleRepositoryChange() {
     final nodes = repository.nodes;
@@ -112,6 +118,7 @@ class DataSourceController extends ChangeNotifier {
   @override
   void dispose() {
     repository.removeListener(_handleRepositoryChange);
+    _simulationService.removeListener(_handleSimulationChange);
     _liveSource?.dispose();
     _simulationService.dispose();
     super.dispose();
