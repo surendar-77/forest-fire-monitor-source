@@ -189,7 +189,8 @@ class _AppShellState extends State<AppShell> {
           appBar: AppBar(
             title: Text(_titles[_selectedIndex]),
             actions: [
-              if (widget.auth.isAdmin) _dataSourceMenu(context),
+              // Demo data stays on this phone, so anyone signed in may try it.
+              _dataSourceMenu(context),
               IconButton(
                 tooltip: 'Settings',
                 icon: const Icon(Icons.settings_outlined),

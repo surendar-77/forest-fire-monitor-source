@@ -8,7 +8,7 @@ import 'simulation_service.dart';
 enum DataSourceMode { simulation, live }
 
 /// Chooses what the per-node screens show: live data for the selected node
-/// (the default) or the on-device simulation (administrators only).
+/// (the default) or the on-device simulation (demo mode).
 class DataSourceController extends ChangeNotifier {
   DataSourceController({required this.repository}) {
     repository.addListener(_handleRepositoryChange);
