@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/alert_model.dart';
 import '../models/detection_model.dart';
 import 'alert_storage_service.dart';
@@ -168,13 +170,19 @@ class SimulationService extends MonitoringDataSource {
     await _storage.saveHistory(_alertHistory);
 
     if (riskLevel == 'HIGH' || riskLevel == 'CRITICAL') {
-      await NotificationService.showFireAlert(
-        severity: riskLevel,
-        fireProbability: fireProbability,
-        smokeProbability: smokeProbability,
-        temperature: temperature,
-        humidity: humidity,
-      );
+      // Phone notifications aren't available everywhere (e.g. the web app);
+      // the demo still works without one.
+      try {
+        await NotificationService.showFireAlert(
+          severity: riskLevel,
+          fireProbability: fireProbability,
+          smokeProbability: smokeProbability,
+          temperature: temperature,
+          humidity: humidity,
+        );
+      } catch (error) {
+        debugPrint('Demo notification unavailable: $error');
+      }
     }
   }
 

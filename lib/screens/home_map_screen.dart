@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -17,6 +18,7 @@ import '../utils/friendly.dart';
 import '../utils/risk_utils.dart';
 import '../widgets/live_overlay_strip.dart';
 import '../widgets/node_details_sheet.dart';
+import '../widgets/simulation_controls.dart';
 import 'add_sensor_screen.dart';
 import 'dashboard_screen.dart';
 
@@ -478,7 +480,10 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                   const SizedBox(height: 2),
                   Text(
                     summary,
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 12.5,
+                    ),
                   ),
                 ],
               ),
@@ -549,7 +554,8 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                       _polygon(a),
                   ],
                 ),
-                if (_routeTarget != null) PolylineLayer(polylines: _routeLines()),
+                if (_routeTarget != null)
+                  PolylineLayer(polylines: _routeLines()),
                 MarkerLayer(
                   markers: [
                     for (final n in nodes)
@@ -622,6 +628,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                 children: [
                   if (live && _selected != null)
                     LiveOverlayStrip(node: _selected!),
+                  if (!live) DemoScenarioBar(simulationService: demo),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -639,7 +646,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
             // Map controls.
             Positioned(
               right: 12,
-              top: live ? 120 : 12,
+              top: live ? 120 : 150,
               child: Column(
                 children: [
                   _layerButton(),
@@ -669,10 +676,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                             Icons.directions,
                             'Directions to ${_selected!.name}',
                             () => _directionsTo(
-                              LatLng(
-                                _selected!.latitude,
-                                _selected!.longitude,
-                              ),
+                              LatLng(_selected!.latitude, _selected!.longitude),
                               _selected!.name,
                             ),
                             color: const Color(0xFF1E88E5),
@@ -743,7 +747,7 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
               Positioned(
                 left: 12,
                 right: 70,
-                top: live ? 120 : 12,
+                top: live ? 120 : 150,
                 child: Material(
                   color: Colors.orange.shade700,
                   borderRadius: BorderRadius.circular(14),
@@ -793,13 +797,23 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
                     top: Radius.circular(20),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: DashboardScreen(
-                    controller: widget.controller,
-                    auth: widget.auth,
-                    onOpenAlerts: widget.onOpenAlerts,
-                    onPlaceOnMap: widget.auth.isAdmin ? _startPlacing : null,
-                    scrollController: scrollController,
-                    embedded: true,
+                  child: ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context).copyWith(
+                      dragDevices: {
+                        PointerDeviceKind.touch,
+                        PointerDeviceKind.mouse,
+                        PointerDeviceKind.trackpad,
+                        PointerDeviceKind.stylus,
+                      },
+                    ),
+                    child: DashboardScreen(
+                      controller: widget.controller,
+                      auth: widget.auth,
+                      onOpenAlerts: widget.onOpenAlerts,
+                      onPlaceOnMap: widget.auth.isAdmin ? _startPlacing : null,
+                      scrollController: scrollController,
+                      embedded: true,
+                    ),
                   ),
                 ),
               ),
