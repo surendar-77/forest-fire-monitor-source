@@ -89,6 +89,8 @@ on every packet received (field tests without a laptop). Serial: `lora sf N`, `l
 
 Measured at the desk (2026-10-20): SF10, 100% of packets, RSSI ≈ −95 dBm, SNR ≈ +11 dB, frequency error ≈ 0.4 kHz.
 
+Signal grades in the app (SF10): Excellent ≥ −105 dBm · Good ≥ −115 · Fair ≥ −125 · Weak below; a very noisy link (SNR < −5 dB) drops one grade.
+
 ## Wi-Fi and self-healing
 
 * Networks: the main network, a backup network, and one saved from the serial console. A failed join rotates

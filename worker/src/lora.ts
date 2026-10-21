@@ -69,7 +69,9 @@ export type LoraQuality = "Excellent" | "Good" | "Fair" | "Weak" | "No signal";
  */
 export function loraQuality(rssi: number | null, snr: number | null): { quality: LoraQuality; bars: number } {
   if (rssi == null) return { quality: "No signal", bars: 0 };
-  let bars = rssi >= -80 ? 4 : rssi >= -95 ? 3 : rssi >= -110 ? 2 : 1;
+  // Graded for SF10, which still decodes at about -132 dBm: -105 dBm or
+  // better leaves 25+ dB of margin (Excellent), down to -125 dBm is usable.
+  let bars = rssi >= -105 ? 4 : rssi >= -115 ? 3 : rssi >= -125 ? 2 : 1;
   if (snr != null && snr < -5 && bars > 1) bars--;
   const quality: LoraQuality[] = ["No signal", "Weak", "Fair", "Good", "Excellent"];
   return { quality: quality[bars], bars };

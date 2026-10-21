@@ -43,10 +43,11 @@ test("out-of-range signal values are dropped, and ignored with no packets", () =
 
 test("signal grades", () => {
   assert.deepEqual(loraQuality(-70, 9), { quality: "Excellent", bars: 4 });
-  assert.deepEqual(loraQuality(-90, 7), { quality: "Good", bars: 3 });
-  assert.deepEqual(loraQuality(-105, 2), { quality: "Fair", bars: 2 });
-  assert.deepEqual(loraQuality(-118, -10), { quality: "Weak", bars: 1 });
-  assert.deepEqual(loraQuality(-90, -8), { quality: "Fair", bars: 2 }); // noisy link drops a step
+  assert.deepEqual(loraQuality(-102, 13), { quality: "Excellent", bars: 4 }); // SF10 at the desk
+  assert.deepEqual(loraQuality(-110, 7), { quality: "Good", bars: 3 });
+  assert.deepEqual(loraQuality(-120, 2), { quality: "Fair", bars: 2 });
+  assert.deepEqual(loraQuality(-118, -10), { quality: "Weak", bars: 1 }); // noisy link drops a step
+  assert.deepEqual(loraQuality(-128, 0), { quality: "Weak", bars: 1 });
   assert.deepEqual(loraQuality(null, null), { quality: "No signal", bars: 0 });
 });
 
@@ -58,7 +59,7 @@ test("stored link has loss percent and last packet time", () => {
   assert.equal(link.lossPercent, 8);
   assert.equal(link.rssi, -97);
   assert.equal(link.snr, 8.3);
-  assert.equal(link.quality, "Fair"); // -97 dBm is below the -95 dBm "Good" line
+  assert.equal(link.quality, "Excellent"); // -97 dBm has plenty of margin at SF10
   assert.deepEqual(link.lastPacketAt, new Date("2026-10-19T09:59:57Z"));
   assert.ok(!("key" in link));
 });

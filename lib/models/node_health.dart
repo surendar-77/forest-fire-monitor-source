@@ -189,10 +189,10 @@ class NodeHealth {
 
   /// 0-4 bars and a word for a LoRa signal (SF10 hears down to about -132 dBm).
   static (int, String) loraSignal(int rssi) {
-    if (rssi >= -100) return (4, 'Excellent');
-    if (rssi >= -110) return (3, 'Good');
-    if (rssi >= -120) return (2, 'Fair');
-    if (rssi >= -128) return (1, 'Weak');
+    if (rssi >= -105) return (4, 'Excellent');
+    if (rssi >= -115) return (3, 'Good');
+    if (rssi >= -125) return (2, 'Fair');
+    if (rssi >= -130) return (1, 'Weak');
     return (0, 'Very weak');
   }
 
