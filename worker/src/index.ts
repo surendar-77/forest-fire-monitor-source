@@ -1491,6 +1491,38 @@ async function handleLoraData(request: Request, env: Env): Promise<Response> {
     if (!device) return json(404, { error: "Unknown node." });
     await ctx.rtdb.put(`loraMeta/${node}/deviceWriteAt`, now);
     await processReading(ctx, data.node, data.node, device, sensorReading(p, ctx.now), "lora");
+
+    // The app's LoRa card comes from the gateway's minute report. If that
+    // report hasn't arrived for 3 min but packets clearly do, fill the card
+    // from this packet's signal so it never says "offline" while data flows.
+    const link = device.data.lora;
+    const linkAt =
+      link && typeof link === "object" && !Array.isArray(link) && !(link instanceof Date)
+        ? asDate((link as Record<string, Plain>).updatedAt)
+        : null;
+    if (!linkAt || now - linkAt.getTime() > 3 * 60_000) {
+      await ctx.fs.set(
+        `devices/${data.node}`,
+        {
+          lora: loraLink(
+            {
+              gateway: data.gateway,
+              key: "",
+              node: data.node,
+              packets: 1,
+              lost: 0,
+              rssi: data.rssi,
+              rssiMin: data.rssi,
+              snr: data.snr,
+              lastPacketAgoSec: 0,
+              windowSec: 60,
+            },
+            ctx.now,
+          ) as unknown as Plain,
+        },
+        true,
+      );
+    }
   }
 
   if (p.alert && alertAllowed(p, AI_FIRE_CONFIDENCE_THRESHOLD)) {
