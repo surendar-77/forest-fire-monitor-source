@@ -241,8 +241,10 @@ class _NodeDetailsState extends State<NodeDetails> {
         _Row(
           Icons.cloud_outlined,
           'Smoke (MQ-2)',
-          fresh && live.smoke1 != null ? '${live.smoke1}' : '--',
-          hint: 'Raw level, 0-4095; rises with smoke',
+          _smokeText(fresh ? live.smoke1 : null, fresh ? live.smoke2 : null),
+          hint: fresh && live.smoke1 != null && live.smoke2 != null
+              ? 'Average · sensor 1 ${live.smoke1} · sensor 2 ${live.smoke2} (0-4095, rises with smoke)'
+              : 'Raw level, 0-4095; rises with smoke',
         ),
         if (widget.node.localAir != null)
           _Row(
@@ -275,6 +277,13 @@ class _NodeDetailsState extends State<NodeDetails> {
         ),
       ],
     );
+  }
+
+  /// Average of the smoke sensors that are reading, or "--".
+  static String _smokeText(int? s1, int? s2) {
+    if (s1 == null && s2 == null) return '--';
+    if (s1 == null || s2 == null) return '${s1 ?? s2}';
+    return '${((s1 + s2) / 2).round()}';
   }
 
   Widget _power(NodeHealth h) {

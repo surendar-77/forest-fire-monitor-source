@@ -86,7 +86,10 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
     // One figure per quantity: the average of both zones' sensors.
     final temp = _average(t1, t2);
     final humidity = _average(h1, h2);
-    final smoke = fresh ? _max(live.smoke1, live.smoke2)?.toDouble() : null;
+    // Average of both smoke sensors, like temperature and humidity.
+    final smoke = fresh
+        ? _average(live.smoke1?.toDouble(), live.smoke2?.toDouble())
+        : null;
     final aiClass = fresh ? live.aiClass : null;
     final aiConf = fresh ? live.aiConfidence : null;
     final riskScore = fresh && live.riskScore != null
@@ -334,9 +337,6 @@ class _LiveOverlayStripState extends State<LiveOverlayStrip> {
 
   static double? _average(double? a, double? b) =>
       a == null ? b : (b == null ? a : (a + b) / 2);
-
-  static int? _max(int? a, int? b) =>
-      a == null ? b : (b == null ? a : (a > b ? a : b));
 
   String _ago(DateTime t) {
     final s = DateTime.now().difference(t).inSeconds;
